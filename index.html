@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#14160f" />
+<title>Survivor Dashboard — The Last of Us TTRPG</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ===================== PERSISTENT SUMMARY ===================== -->
+<header id="summary-bar" class="summary-bar">
+  <div class="summary-inner">
+    <div class="summary-identity">
+      <input id="summary-name" class="summary-name-input" type="text" placeholder="Survivor Name" maxlength="40" />
+      <div class="summary-sub">
+        <span id="summary-bg" class="summary-bg">No Background</span>
+        <span class="dot">•</span>
+        <span class="summary-level">Lvl <span id="summary-level">1</span></span>
+      </div>
+    </div>
+
+    <div class="summary-stats" id="summary-stats">
+      <!-- stat pills injected -->
+    </div>
+
+    <div class="summary-meta">
+      <div class="meta-block">
+        <span class="meta-label">Status</span>
+        <div id="summary-status" class="chip-row"></div>
+      </div>
+      <div class="meta-block">
+        <span class="meta-label">Survivor Perks</span>
+        <div id="summary-perks" class="chip-row"></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== TAB NAV ===================== -->
+<nav class="tab-nav" id="tab-nav">
+  <button class="tab-btn active" data-tab="character"><span class="tab-icon">🧍</span><span class="tab-text">Character</span></button>
+  <button class="tab-btn" data-tab="weapons"><span class="tab-icon">🔫</span><span class="tab-text">Weapons</span></button>
+  <button class="tab-btn" data-tab="backpack"><span class="tab-icon">🎒</span><span class="tab-text">Backpack</span></button>
+  <button class="tab-btn" data-tab="skills"><span class="tab-icon">🌿</span><span class="tab-text">Skill Trees</span></button>
+  <button class="tab-btn" data-tab="notes"><span class="tab-icon">📓</span><span class="tab-text">Notes</span></button>
+</nav>
+
+<main class="content">
+
+  <!-- ===================== CHARACTER TAB ===================== -->
+  <section class="tab-panel active" id="tab-character">
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Vitals & Identity</h2>
+      </div>
+      <div class="identity-grid">
+        <label class="field">
+          <span class="field-label">Name</span>
+          <input id="char-name" type="text" placeholder="Survivor Name" maxlength="40" />
+        </label>
+        <label class="field">
+          <span class="field-label">Background</span>
+          <select id="char-background"></select>
+        </label>
+        <label class="field">
+          <span class="field-label">Level</span>
+          <select id="char-level"></select>
+        </label>
+      </div>
+
+      <div id="background-perk-callout" class="bg-callout"></div>
+
+      <!-- HP big control -->
+      <div class="hp-block">
+        <div class="hp-readout">
+          <span class="hp-label">HIT POINTS</span>
+          <div class="hp-numbers"><span id="hp-current">10</span><span class="hp-sep">/</span><span id="hp-max">10</span></div>
+          <div class="hp-bar"><div id="hp-bar-fill" class="hp-bar-fill"></div></div>
+        </div>
+        <div class="hp-controls">
+          <button class="hp-btn minus" data-hp="-5">−5</button>
+          <button class="hp-btn minus" data-hp="-1">−1</button>
+          <button class="hp-btn plus" data-hp="1">+1</button>
+          <button class="hp-btn plus" data-hp="5">+5</button>
+          <button class="hp-btn full" id="hp-full">FULL</button>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="char-stat-grid"></div>
+    </div>
+
+    <!-- Ability Scores -->
+    <div class="panel">
+      <div class="panel-head"><h2>Ability Scores</h2><span class="panel-hint">Standard Array: 15 14 13 12 10 8</span></div>
+      <div class="ability-grid" id="ability-grid"></div>
+    </div>
+
+    <!-- Available Actions Dashboard -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>What Can I Do Right Now?</h2>
+        <span class="panel-hint">Auto-built from your background, perks, trees &amp; gear</span>
+      </div>
+      <div class="actions-dashboard" id="actions-dashboard"></div>
+    </div>
+
+    <!-- Survivor Perks -->
+    <div class="panel">
+      <div class="panel-head"><h2>Survivor Perks</h2></div>
+      <div id="perks-list" class="perks-list"></div>
+      <div class="perk-adder" id="perk-adder"></div>
+    </div>
+
+    <!-- Proficiencies -->
+    <div class="panel">
+      <div class="panel-head"><h2>Proficiencies</h2><span class="panel-hint">What each one affects</span></div>
+      <div id="proficiencies" class="prof-groups"></div>
+    </div>
+
+    <!-- Status Effects -->
+    <div class="panel">
+      <div class="panel-head"><h2>Status Effects</h2></div>
+      <div id="status-active" class="chip-row big"></div>
+      <div class="status-adder" id="status-adder"></div>
+    </div>
+
+  </section>
+
+  <!-- ===================== WEAPONS TAB ===================== -->
+  <section class="tab-panel" id="tab-weapons">
+    <div class="panel-head loose">
+      <h2>Arsenal</h2>
+      <button class="btn accent" id="add-weapon-btn">+ Add Weapon</button>
+    </div>
+    <div id="weapons-grid" class="weapons-grid"></div>
+  </section>
+
+  <!-- ===================== BACKPACK TAB ===================== -->
+  <section class="tab-panel" id="tab-backpack">
+    <div class="panel-head loose">
+      <h2>Backpack</h2>
+      <span class="panel-hint" id="slot-counter">Slots used: 0</span>
+    </div>
+    <div id="backpack" class="backpack"></div>
+  </section>
+
+  <!-- ===================== SKILL TREES TAB ===================== -->
+  <section class="tab-panel" id="tab-skills">
+    <div class="ap-banner">
+      <div class="ap-chip"><span class="ap-num" id="ap-available">0</span><span class="ap-lbl">AP Available</span></div>
+      <div class="ap-chip spent"><span class="ap-num" id="ap-spent">0</span><span class="ap-lbl">AP Spent</span></div>
+      <div class="ap-chip total"><span class="ap-num" id="ap-total">0</span><span class="ap-lbl">AP Total (Lvl)</span></div>
+    </div>
+    <div id="skill-trees" class="skill-trees"></div>
+  </section>
+
+  <!-- ===================== NOTES TAB ===================== -->
+  <section class="tab-panel" id="tab-notes">
+    <div class="panel-head loose">
+      <h2>Field Notes</h2>
+      <button class="btn accent" id="add-note-btn">+ New Note</button>
+    </div>
+    <div id="notes-list" class="notes-list"></div>
+  </section>
+
+  <!-- ===================== RULES REFERENCE (always at bottom) ===================== -->
+  <div class="panel ref-panel">
+    <button class="ref-toggle" id="ref-toggle">
+      <span>📖 Rules Quick-Reference</span>
+      <span class="ref-arrow">▾</span>
+    </button>
+    <div id="ref-body" class="ref-body collapsed"></div>
+  </div>
+
+  <!-- Data management -->
+  <div class="data-bar">
+    <button class="btn ghost" id="export-btn">⬇ Export Character</button>
+    <button class="btn ghost" id="import-btn">⬆ Import Character</button>
+    <button class="btn danger-ghost" id="reset-btn">↺ New Character</button>
+    <input type="file" id="import-file" accept="application/json" hidden />
+    <span id="save-indicator" class="save-indicator">Saved</span>
+  </div>
+
+</main>
+
+<!-- ===================== WEAPON MODAL ===================== -->
+<div class="modal-overlay" id="weapon-modal" hidden>
+  <div class="modal">
+    <div class="modal-head"><h3 id="weapon-modal-title">Add Weapon</h3><button class="modal-close" id="weapon-modal-close">✕</button></div>
+    <div class="modal-body" id="weapon-modal-body">
+      <label class="field">
+        <span class="field-label">Quick Template</span>
+        <select id="wf-template"></select>
+      </label>
+      <label class="field"><span class="field-label">Name</span><input id="wf-name" type="text" placeholder="e.g. Bolt-Action Rifle" /></label>
+      <div class="field-row">
+        <label class="field"><span class="field-label">Type / Category</span>
+          <select id="wf-category">
+            <option value="rifle">Rifle / Long Gun</option>
+            <option value="handgun">Handgun / Small Gun</option>
+            <option value="bow">Bow</option>
+            <option value="blunt">Blunt Melee</option>
+            <option value="improvised">Improvised Melee</option>
+            <option value="melee">Other Melee</option>
+          </select>
+        </label>
+        <label class="field"><span class="field-label">Sound Level</span>
+          <select id="wf-sound">
+            <option>Silent</option><option>Quiet</option><option>Medium</option><option>Loud</option><option>Very Loud</option>
+          </select>
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="field"><span class="field-label">Damage</span><input id="wf-damage" type="text" placeholder="e.g. 2d8 + DEX" /></label>
+        <label class="field"><span class="field-label">Range</span><input id="wf-range" type="text" placeholder="e.g. 300 ft" /></label>
+      </div>
+      <div class="field-row">
+        <label class="field"><span class="field-label">Ammo Type</span><input id="wf-ammotype" type="text" placeholder="e.g. Rifle Ammo / Arrows / —" /></label>
+        <label class="field"><span class="field-label">Max Ammo</span><input id="wf-maxammo" type="number" min="0" max="999" placeholder="6" /></label>
+      </div>
+      <label class="field"><span class="field-label">Upgrades (comma separated)</span><input id="wf-upgrades" type="text" placeholder="e.g. Scope, Silencer" /></label>
+      <label class="field"><span class="field-label">Notes</span><textarea id="wf-notes" rows="2" placeholder="Anything else to remember…"></textarea></label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" id="weapon-cancel">Cancel</button>
+      <button class="btn accent" id="weapon-save">Save Weapon</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="script.js"></script>
+</body>
+</html>
