@@ -441,7 +441,7 @@ function defaultCharacter() {
     background: "",
     level: 1,
     abilities: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
-    currentHP: 10,
+    currentHP: 11,
     tempHP: 0,
     wearingArmor: false,
     weapons: [],
