@@ -355,7 +355,7 @@ GAME_DATA.inventory = [
     { id: "bandage", name: "Bandage", icon: "inv-bandage", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Heals 1d4 + CON when used. Crafting consumes 1 Rag + 1 Alcohol." },
     { id: "molotov", name: "Molotov", icon: "inv-molotov", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Thrown weapon: 1d10 fire damage; DC 15 DEX save vs catching fire. Crafting consumes 1 Rag + 1 Alcohol." },
     { id: "shiv", name: "Shiv", icon: "inv-shiv", recipe: "Scrap + Binding", craft: { scrap: 1, binding: 1 }, desc: "Instant kill vs an Unaware creature with max HP ≤ 30; otherwise the target makes a DC 15 CON save or dies. Crafting consumes 1 Scrap + 1 Binding." },
-    { id: "silencer", name: "Silencer", icon: "inv-silencer", recipe: "Rag + Bottle", craft: { rag: 1, bottle: 1 }, desc: "Attach to a firearm to drop its sound level by one category. Crafting consumes 1 Rag + 1 Bottle." },
+    { id: "silencer", name: "Silencer", icon: "inv-silencer", recipe: "Rag + Bottle", craft: { rag: 1, bottle: 1 }, desc: "Attach to a firearm to make it Quiet, regardless of its normal sound level. Crafting consumes 1 Rag + 1 Bottle." },
     { id: "upgradedWeapon", name: "Upgraded Improv. Weapon", icon: "inv-upgradedWeapon", recipe: "2× Scrap + Binding", craft: { scrap: 2, binding: 1 }, desc: "An improvised weapon reinforced to deal 1d10 damage and only break on a roll of 1. Crafting consumes 2 Scrap + 1 Binding." },
     { id: "medkit", name: "Medkit", icon: "inv-medkit", recipe: "Found only", desc: "Heals 2d6 + CON when used. Cannot be crafted — found only." },
   ]},
@@ -413,6 +413,7 @@ function tmplWeapon(name, category, overrides = {}) {
     maxAmmo: base.maxAmmo || 0,
     currentAmmo: base.maxAmmo || 0,
     sound: base.sound || "Medium",
+    silenced: false,
     upgrades: (base.upgrades || []).slice(),
     notes: "",
   };
@@ -449,7 +450,7 @@ function defaultCharacter() {
     statuses: [],           // [string]
     notes: [],              // [{id, title, body, collapsed}]
     resolveCurrent: null,   // null = full (synced to max)
-    equip: { weapon1: null, weapon2: null, holster1: null, holster2: null }, // weapon ids
+    equip: { longgun: null, handgun: null, melee: null }, // weapon ids
   };
 }
 
@@ -458,7 +459,13 @@ let character = loadCharacter();
 function loadCharacter() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return Object.assign(defaultCharacter(), JSON.parse(raw));
+    if (raw) {
+      const c = Object.assign(defaultCharacter(), JSON.parse(raw));
+      if (!c.equip || !("longgun" in c.equip) || !("handgun" in c.equip) || !("melee" in c.equip)) {
+        c.equip = Object.assign({ longgun: null, handgun: null, melee: null }, c.equip);
+      }
+      return c;
+    }
   } catch (e) { console.warn("Load failed", e); }
   return defaultCharacter();
 }
@@ -658,6 +665,14 @@ function weaponToHitMod(w) {
   return D.mods[weaponAbility(w)] + (weaponProficient(w) ? D.pb : 0);
 }
 
+/* Ammo type -> backpack inventory id */
+function ammoInvId(w) {
+  if (w.category === "handgun") return "handgunAmmo";
+  if (w.category === "bow") return "arrows";
+  if (w.category === "rifle") return "longGunAmmo";
+  return null;
+}
+
 /* ============================================================
    4b. DICE & ROLLING
    ============================================================ */
@@ -711,14 +726,16 @@ function rollFormula(parts) {
 }
 
 let rollLogTimer = 0;
-function addRollLog(title, detail, total) {
+function addRollLog(title, detail, total, natType) {
   const log = document.getElementById("roll-log");
   const entry = document.createElement("div");
-  entry.className = "roll-entry";
-  entry.innerHTML = `<div class="re-title">${esc(title)}<span class="re-total">${total}</span></div><div class="re-detail">${esc(detail)}</div>`;
+  entry.className = "roll-entry" + (natType ? ` ${natType}` : "");
+  const banner = natType === "nat20" ? `<div class="re-nat">★ NATURAL 20! ★</div>`
+    : natType === "nat1" ? `<div class="re-nat">NATURAL 1...</div>` : "";
+  entry.innerHTML = `${banner}<div class="re-title">${esc(title)}<span class="re-total">${total}</span></div><div class="re-detail">${esc(detail)}</div>`;
   log.appendChild(entry);
   while (log.children.length > 5) log.removeChild(log.firstChild);
-  setTimeout(() => entry.remove(), 8000);
+  setTimeout(() => entry.remove(), natType ? 12000 : 8000);
 }
 
 /* Roll a formula string (e.g. weapon damage "2d8 + DEX") and log it */
@@ -733,7 +750,8 @@ function rollDamage(formula, label) {
 function rollD20(modifier, label) {
   const die = rollDie(20);
   const total = die + modifier;
-  addRollLog(label, `d20 [${die}] ${fmtMod(modifier)}`, total);
+  const natType = die === 20 ? "nat20" : die === 1 ? "nat1" : null;
+  addRollLog(label, `d20 [${die}] ${fmtMod(modifier)}`, total, natType);
 }
 
 /* ============================================================
@@ -855,12 +873,12 @@ function renderCharacterTab() {
     { lbl: "Proficiency", val: fmtMod(D.pb) },
     { lbl: "Movement", val: D.speed + " ft" },
     { lbl: "Available AP", val: D.apAvailable, accent: true },
-    { lbl: "Resolve", val: `${D.resolveCurrent} / ${D.resolveMax}` },
+    { lbl: "Resolve", val: `${D.resolveCurrent} / ${D.resolveMax}`, id: "char-resolve-card", cls: "resolve-pill", title: "Click to spend, right-click to restore" },
     { lbl: "Maneuver DC", val: D.maneuverDC },
     { lbl: "Max HP", val: D.maxHp },
   ];
   document.getElementById("char-stat-grid").innerHTML = cards.map(c =>
-    `<div class="stat-card ${c.accent ? "accent" : ""}"><div class="sc-val">${c.val}</div><div class="sc-lbl">${c.lbl}</div></div>`
+    `<div class="stat-card ${c.accent ? "accent" : ""} ${c.cls || ""}" ${c.id ? `id="${c.id}"` : ""} ${c.title ? `title="${esc(c.title)}"` : ""}><div class="sc-val">${c.val}</div><div class="sc-lbl">${c.lbl}</div></div>`
   ).join("");
 
   // ability scores
@@ -1029,7 +1047,10 @@ function renderWeapons() {
   grid.innerHTML = character.weapons.map(w => {
     const bonuses = weaponBonuses(w);
     const hasAmmo = w.maxAmmo > 0 || (w.ammoType && w.ammoType.trim());
-    const soundCls = "sound " + (w.sound || "").toLowerCase().replace(/\s+/g, "");
+    const effectiveSound = w.silenced ? "Quiet" : (w.sound || "");
+    const soundCls = "sound " + effectiveSound.toLowerCase().replace(/\s+/g, "");
+    const canSilence = w.maxAmmo > 0; // firearms only
+    const haveSilencer = (character.inventory.silencer || 0) > 0;
     return `<div class="weapon-card cat-${w.category}">
       <div class="weapon-head">
         <div><div class="weapon-name">${esc(w.name || "Unnamed")}</div>
@@ -1047,9 +1068,17 @@ function renderWeapons() {
       <div class="weapon-stats">
         <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val rollable" data-roll-damage="${w.id}" title="Click to roll">${esc(w.damage || "—")}</div></div>
         <div class="wstat"><div class="ws-lbl">Range</div><div class="ws-val">${esc(w.range || "—")}</div></div>
-        <div class="wstat ${soundCls}"><div class="ws-lbl">Sound</div><div class="ws-val">${esc(w.sound || "—")}</div></div>
+        <div class="wstat ${soundCls}"><div class="ws-lbl">Sound</div><div class="ws-val">${esc(effectiveSound || "—")}</div></div>
         <div class="wstat"><div class="ws-lbl">Ammo Type</div><div class="ws-val">${esc(w.ammoType || "—")}</div></div>
       </div>
+
+      ${canSilence ? `
+        <div class="silencer-row">
+          <button class="silencer-btn ${w.silenced ? "on" : ""}" data-toggle-silencer="${w.id}" ${(!w.silenced && !haveSilencer) ? "disabled" : ""}>
+            ${icon("inv-silencer")} ${w.silenced ? "Remove Silencer" : "Attach Silencer"}
+          </button>
+          ${!w.silenced && !haveSilencer ? `<span class="silencer-hint">Need a Silencer in your backpack</span>` : ""}
+        </div>` : ""}
 
       <div class="ammo-track ${hasAmmo ? "" : "none"}">
         <div class="ammo-top">
@@ -1079,20 +1108,22 @@ function renderWeapons() {
 /* ---- Backpack ---- */
 const GENERAL_SLOTS = 12;
 const EQUIP_SLOT_DEFS = [
-  { key: "weapon1", label: "Weapon Slot 1", icon: "slot-weapon" },
-  { key: "weapon2", label: "Weapon Slot 2", icon: "slot-weapon" },
-  { key: "holster1", label: "Holster 1", icon: "slot-holster" },
-  { key: "holster2", label: "Holster 2", icon: "slot-holster" },
+  { key: "longgun", label: "Long Gun Slot", icon: "slot-weapon", categories: ["rifle", "bow"] },
+  { key: "handgun", label: "Handgun Holster", icon: "slot-holster", categories: ["handgun"] },
+  { key: "melee", label: "Melee Weapon", icon: "slot-weapon", categories: ["blunt", "melee", "improvised"] },
 ];
 
 function renderEquipSlots() {
-  if (!character.equip) character.equip = { weapon1: null, weapon2: null, holster1: null, holster2: null };
+  if (!character.equip || EQUIP_SLOT_DEFS.some(s => !(s.key in character.equip))) {
+    character.equip = { longgun: null, handgun: null, melee: null };
+  }
   const root = document.getElementById("equip-slots");
   root.innerHTML = EQUIP_SLOT_DEFS.map(slot => {
     const wid = character.equip[slot.key];
     const w = character.weapons.find(x => x.id === wid);
+    const choices = character.weapons.filter(x => slot.categories.includes(x.category));
     const opts = [`<option value="">— Empty —</option>`]
-      .concat(character.weapons.map(x => `<option value="${x.id}" ${x.id === wid ? "selected" : ""}>${esc(x.name || "Unnamed")}</option>`));
+      .concat(choices.map(x => `<option value="${x.id}" ${x.id === wid ? "selected" : ""}>${esc(x.name || "Unnamed")}</option>`));
     return `<div class="equip-slot ${w ? "filled" : ""}">
       <div class="es-label">${icon(slot.icon)} ${slot.label}</div>
       <select data-equip-slot="${slot.key}">${opts.join("")}</select>
@@ -1103,10 +1134,14 @@ function renderEquipSlots() {
 function renderBackpack() {
   renderEquipSlots();
 
-  const used = Math.min(GENERAL_SLOTS, estimateSlots());
-  document.getElementById("general-slots").innerHTML = Array.from({ length: GENERAL_SLOTS }, (_, i) =>
-    `<div class="gen-slot ${i < used ? "filled" : ""}"></div>`
-  ).join("");
+  const filledItems = GAME_DATA.inventory.flatMap(g => g.items).filter(it => (character.inventory[it.id] || 0) > 0);
+  const cells = filledItems.map(it => `<div class="gen-slot filled" data-item-info="${it.id}">
+    <span class="gs-icon">${icon(it.icon)}</span>
+    <div class="gs-name">${esc(it.name)}</div>
+    <div class="gs-qty">×${character.inventory[it.id]}</div>
+  </div>`);
+  while (cells.length < GENERAL_SLOTS) cells.push(`<div class="gen-slot"></div>`);
+  document.getElementById("general-slots").innerHTML = cells.slice(0, GENERAL_SLOTS).join("");
 
   const root = document.getElementById("backpack");
   root.innerHTML = GAME_DATA.inventory.map(group => {
@@ -1129,7 +1164,7 @@ function renderBackpack() {
     </div>`;
   }).join("");
 
-  document.getElementById("slot-counter").textContent = `Est. slots used: ${estimateSlots()} / ${GENERAL_SLOTS}`;
+  document.getElementById("slot-counter").textContent = `Slots used: ${Math.min(filledItems.length, GENERAL_SLOTS)} / ${GENERAL_SLOTS}`;
 
   renderCrafting();
 }
@@ -1153,20 +1188,6 @@ function renderCrafting() {
   }).join("");
 }
 
-function estimateSlots() {
-  const inv = character.inventory;
-  const stack3 = !!derive().flags.craftedStack3;
-  const craftedStack = stack3 ? 3 : 2;
-  let slots = 0;
-  const materials = ["rag", "scrap", "alcohol", "binding", "bottle"];
-  const ammo = ["handgunAmmo", "longGunAmmo", "arrows"];
-  const crafted = ["bandage", "molotov", "shiv", "silencer", "upgradedWeapon"];
-  materials.forEach(id => slots += Math.ceil((inv[id] || 0) / 5));
-  ammo.forEach(id => slots += Math.ceil((inv[id] || 0) / 10));
-  crafted.forEach(id => slots += Math.ceil((inv[id] || 0) / craftedStack));
-  slots += Math.ceil((inv.medkit || 0) / craftedStack);
-  return slots;
-}
 
 /* ---- Skill trees ---- */
 function renderSkillTrees() {
@@ -1388,6 +1409,58 @@ document.getElementById("summary-stats").addEventListener("contextmenu", e => {
   save(); renderSummary(); renderCharacterTab();
 });
 
+/* Resolve button on the Character tab */
+document.getElementById("char-stat-grid").addEventListener("click", e => {
+  if (!e.target.closest("#char-resolve-card")) return;
+  if (character.resolveCurrent > 0) {
+    character.resolveCurrent -= 1;
+    toast(`Resolve spent (${character.resolveCurrent}/${D.resolveMax})`);
+  } else {
+    toast("No Resolve remaining.");
+  }
+  save(); renderSummary(); renderCharacterTab();
+});
+document.getElementById("char-stat-grid").addEventListener("contextmenu", e => {
+  if (!e.target.closest("#char-resolve-card")) return;
+  e.preventDefault();
+  if (character.resolveCurrent < D.resolveMax) {
+    character.resolveCurrent += 1;
+    toast(`Resolve restored (${character.resolveCurrent}/${D.resolveMax})`);
+  }
+  save(); renderSummary(); renderCharacterTab();
+});
+
+/* Rests */
+document.getElementById("rest-btn").addEventListener("click", e => {
+  e.stopPropagation();
+  document.getElementById("rest-menu").hidden = !document.getElementById("rest-menu").hidden;
+});
+document.addEventListener("click", e => {
+  const menu = document.getElementById("rest-menu");
+  if (!menu.hidden && !e.target.closest("#rest-menu") && !e.target.closest("#rest-btn")) menu.hidden = true;
+});
+document.getElementById("rest-menu").addEventListener("click", e => {
+  const btn = e.target.closest("[data-rest]");
+  if (!btn) return;
+  const type = btn.dataset.rest;
+  if (type === "short") {
+    character.tempHP = 0;
+    toast("Short rest taken.");
+  } else if (type === "camp") {
+    character.currentHP = D.maxHp;
+    character.tempHP = 0;
+    character.resolveCurrent = Math.min(D.resolveMax, character.resolveCurrent + 1);
+    toast("Camp rest taken — HP restored, +1 Resolve.");
+  } else if (type === "long") {
+    character.currentHP = D.maxHp;
+    character.tempHP = 0;
+    character.resolveCurrent = D.resolveMax;
+    toast("Long rest taken — HP and Resolve fully restored.");
+  }
+  document.getElementById("rest-menu").hidden = true;
+  save(); renderSummary(); renderCharacterTab(); renderActionsDashboard();
+});
+
 /* Rolls tab click-to-roll (delegated) */
 document.getElementById("tab-rolls").addEventListener("click", e => {
   const el = e.target.closest("[data-roll-d20]");
@@ -1447,9 +1520,41 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
     const [id, op] = ammoBtn.dataset.ammo.split(":");
     const w = character.weapons.find(x => x.id === id);
     if (!w) return;
-    if (op === "reload") w.currentAmmo = w.maxAmmo;
-    else w.currentAmmo = Math.max(0, Math.min(w.maxAmmo || 999, (w.currentAmmo || 0) + Number(op)));
-    save(); renderWeapons();
+    const invId = ammoInvId(w);
+    if (op === "reload") {
+      const needed = (w.maxAmmo || 0) - (w.currentAmmo || 0);
+      const have = invId ? (character.inventory[invId] || 0) : Infinity;
+      const take = Math.max(0, Math.min(needed, have));
+      w.currentAmmo = (w.currentAmmo || 0) + take;
+      if (invId) character.inventory[invId] = (character.inventory[invId] || 0) - take;
+    } else if (op === "1") {
+      const have = invId ? (character.inventory[invId] || 0) : Infinity;
+      if ((w.currentAmmo || 0) < (w.maxAmmo || 0) && have > 0) {
+        w.currentAmmo = (w.currentAmmo || 0) + 1;
+        if (invId) character.inventory[invId] -= 1;
+      }
+    } else if (op === "-1") {
+      if ((w.currentAmmo || 0) > 0) {
+        w.currentAmmo -= 1;
+        if (invId) character.inventory[invId] = (character.inventory[invId] || 0) + 1;
+      }
+    }
+    save(); renderWeapons(); renderBackpack();
+    return;
+  }
+  const silBtn = e.target.closest("[data-toggle-silencer]");
+  if (silBtn) {
+    const w = character.weapons.find(x => x.id === silBtn.dataset.toggleSilencer);
+    if (!w) return;
+    if (!w.silenced) {
+      if ((character.inventory.silencer || 0) <= 0) return;
+      character.inventory.silencer -= 1;
+      w.silenced = true;
+    } else {
+      character.inventory.silencer = (character.inventory.silencer || 0) + 1;
+      w.silenced = false;
+    }
+    save(); renderWeapons(); renderBackpack();
     return;
   }
   const editBtn = e.target.closest("[data-edit-weapon]");
