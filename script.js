@@ -366,6 +366,7 @@ GAME_DATA.inventory.forEach(g => g.items.forEach(i => { GAME_DATA.invById[i.id] 
 
 /* --- Status effect presets ----------------------------------------------- */
 GAME_DATA.statusPresets = [
+  { label: "Open", cls: "green" },
   { label: "Bleeding", cls: "danger" },
   { label: "Braced", cls: "green" },
   { label: "Hidden", cls: "green" },
@@ -395,7 +396,7 @@ GAME_DATA.keywords = [
   { term: "Downed", def: "A PC at 0 HP: unconscious & Open. DC 10 CON saves each turn — 3 successes stabilize, 3 failures = dead." },
   { term: "Durability Check", def: "On an improvised-weapon hit, roll d4: base breaks on 1–3; Upgraded/Brawler weapons break only on 1." },
   { term: "Massive Injury", def: "An enemy hit for 50%+ of its max HP rolls on the 1d8 injury table. 75%+ instantly kills Fodder." },
-  { term: "Resolve", def: "Level ÷ 2 (round up, max 5), refreshed on a long rest. Spend 1 to reroll, add 1d6, shrug off Disadvantage, or act while Downed." },
+  { term: "Resolve", def: "1 at levels 1-4, 2 at levels 5-8, 3 at levels 9-10. Refreshed on a long rest, +1 on a camp rest. Spend 1 Resolve to FORCE A REROLL of any d20 — yours or another player's — including attacks, checks, saves, and damage dice. Take the new result." },
 ];
 
 /* ============================================================
