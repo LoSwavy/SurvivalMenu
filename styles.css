@@ -709,3 +709,141 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
 @media (hover: none) {
   .tier-card:active { background: var(--card-hi); }
 }
+
+/* ====================== ICONS (b/w line art) ====================== */
+.icon {
+  width: 1.05em; height: 1.05em; display: inline-block; vertical-align: -0.18em;
+  filter: brightness(0) invert(1); opacity: 0.85;
+}
+.tab-icon .icon { width: 1.2rem; height: 1.2rem; }
+.action-col-head .icon { width: 1.05rem; height: 1.05rem; }
+.ic-icon .icon { width: 1.1rem; height: 1.1rem; }
+.btn .icon, .ref-toggle .icon { width: 1rem; height: 1rem; }
+.tier.unlocked .icon, .stat-pill .icon { filter: brightness(0) saturate(100%) invert(70%) sepia(40%) saturate(400%) hue-rotate(60deg); }
+
+/* ====================== TEMP HP ====================== */
+.temp-hp-block {
+  margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+.temp-hp-label { font-size: 0.64rem; letter-spacing: 1.2px; color: var(--text-faint); margin-right: auto; }
+.temp-hp-controls { display: flex; align-items: center; gap: 6px; }
+.temp-hp-controls .hp-btn { min-width: 44px; min-height: 38px; padding: 0 8px; font-size: 0.85rem; }
+.temp-hp-val { font-size: 1.2rem; font-weight: 800; color: var(--green); min-width: 1.6em; text-align: center; }
+
+/* ====================== DICE / ROLLING ====================== */
+.rollable {
+  cursor: pointer; border-radius: 6px; padding: 1px 5px; transition: background .15s, color .15s;
+  border: 1px dashed transparent;
+}
+.rollable:hover { background: var(--green-glow); border-color: var(--green-deep); color: var(--green); }
+.rollable:active { transform: translateY(1px); }
+.attack-roll-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  color: var(--text); font-weight: 700; font-size: 0.78rem; padding: 8px 10px; cursor: pointer;
+  min-height: var(--tap);
+}
+.attack-roll-btn:hover { border-color: var(--green-deep); color: var(--green); }
+.attack-roll-btn .icon { width: 1.1rem; height: 1.1rem; }
+.weapon-rolls { display: flex; gap: 8px; margin-bottom: 10px; }
+.ws-val.rollable { display: inline-block; }
+
+.roll-log {
+  position: fixed; left: 12px; bottom: 12px; z-index: 70;
+  display: flex; flex-direction: column-reverse; gap: 6px;
+  max-width: 280px; pointer-events: none;
+}
+.roll-entry {
+  background: var(--card-hi); border: 1px solid var(--green-deep); border-radius: var(--radius-sm);
+  padding: 8px 12px; box-shadow: var(--shadow-lg); font-size: 0.78rem; color: var(--text);
+  animation: rollIn .2s ease;
+}
+.roll-entry .re-title { font-weight: 800; color: var(--green); margin-bottom: 2px; }
+.roll-entry .re-detail { color: var(--text-dim); font-size: 0.72rem; }
+.roll-entry .re-total { font-size: 1.1rem; font-weight: 800; color: var(--text); margin-left: 6px; }
+@keyframes rollIn { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+
+@media (max-width: 620px) {
+  .roll-log { bottom: 70px; }
+}
+
+/* ====================== ITEM POPUP ====================== */
+.item-popup {
+  position: absolute; z-index: 80; max-width: 260px;
+  background: linear-gradient(170deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--green-deep); border-radius: var(--radius); box-shadow: var(--shadow-lg);
+}
+.item-popup[hidden] { display: none; }
+.item-popup-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; border-bottom: 1px solid var(--line-soft); font-weight: 800; color: var(--green);
+}
+.item-popup-body { padding: 10px 12px; font-size: 0.8rem; color: var(--text-dim); line-height: 1.4; }
+
+/* ====================== ROLLS PAGE ====================== */
+.roll-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px;
+  margin-bottom: 10px;
+}
+.roll-card {
+  background: linear-gradient(180deg, var(--card-hi), var(--card));
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 10px; text-align: center;
+}
+.roll-card .rc-name { font-size: 0.7rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.6px; }
+.roll-card .rc-sub { font-size: 0.62rem; color: var(--text-faint); margin-top: 1px; }
+.roll-card .rc-mod {
+  font-size: 1.4rem; font-weight: 800; color: var(--green); margin-top: 4px;
+  display: inline-block; padding: 2px 10px; border-radius: 8px; cursor: pointer;
+}
+.roll-card .rc-mod:hover { background: var(--green-glow); }
+
+/* ====================== EQUIP / GENERAL SLOTS ====================== */
+.equip-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 10px; margin-bottom: 18px; }
+.equip-slot {
+  background: linear-gradient(180deg, var(--card-hi), var(--card));
+  border: 1px dashed var(--line); border-radius: var(--radius-sm);
+  padding: 10px; text-align: center;
+}
+.equip-slot.filled { border-style: solid; border-color: var(--green-deep); }
+.equip-slot .es-label { font-size: 0.62rem; letter-spacing: 1px; text-transform: uppercase; color: var(--text-faint); display: flex; align-items: center; justify-content: center; gap: 4px; }
+.equip-slot select {
+  width: 100%; margin-top: 6px; background: var(--bg-2); border: 1px solid var(--line);
+  border-radius: 6px; color: var(--text); padding: 6px; font-size: 0.78rem; min-height: 36px;
+}
+
+.general-slots { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin-bottom: 12px; }
+.gen-slot {
+  aspect-ratio: 1; border: 1px solid var(--line); border-radius: 4px; background: var(--bg-2);
+}
+.gen-slot.filled { background: var(--green-deep); opacity: 0.6; }
+@media (max-width: 620px) { .general-slots { grid-template-columns: repeat(6, 1fr); } }
+
+/* Smaller backpack items */
+.backpack .inv-grid { grid-template-columns: repeat(auto-fill, minmax(96px,1fr)); gap: 8px; }
+.backpack .inv-item { padding: 8px 6px; cursor: pointer; }
+.backpack .inv-icon { width: 1.4rem; height: 1.4rem; }
+.backpack .inv-name { font-size: 0.62rem; min-height: 1.7em; }
+.backpack .inv-qty { font-size: 1.1rem; }
+.backpack .inv-controls .inv-btn { min-height: 32px; font-size: 1rem; }
+
+/* ====================== CRAFTING ====================== */
+.crafting-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 10px; margin-bottom: 10px; }
+.craft-card {
+  background: linear-gradient(180deg, var(--card-hi), var(--card));
+  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; text-align: center;
+}
+.craft-card .cc-name { font-weight: 700; font-size: 0.82rem; color: var(--text); display: flex; align-items: center; justify-content: center; gap: 6px; }
+.craft-card .cc-recipe { font-size: 0.66rem; color: var(--text-faint); margin: 4px 0 8px; }
+.craft-card button {
+  width: 100%; min-height: var(--tap); border-radius: 6px; border: 1px solid var(--green-deep);
+  background: var(--green-glow); color: var(--green); font-weight: 800; cursor: pointer;
+}
+.craft-card button:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--line); background: var(--bg-2); color: var(--text-faint); }
+
+/* ====================== RULES REFERENCE POSITIONING ====================== */
+body[data-active-tab]:not([data-active-tab="character"]) .ref-panel {
+  margin-top: 28px;
+}
