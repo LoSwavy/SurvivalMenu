@@ -20,6 +20,19 @@
 const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
 const ABILITY_NAMES = { str: "STR", dex: "DEX", con: "CON", int: "INT", wis: "WIS", cha: "CHA" };
 
+/* Black & white line-art icons (icons/*.svg) */
+function icon(name, cls = "") {
+  return `<img class="icon ${cls}" src="icons/${name}.svg" alt="" />`;
+}
+
+/* Skill -> governing ability (for the Rolls page) */
+const SKILL_ABILITY = {
+  "Athletics": "str", "Acrobatics": "dex", "Sleight of Hand": "dex", "Stealth": "dex",
+  "Investigation": "int", "Engineering": "int",
+  "Perception": "wis", "Medicine": "wis", "Survival": "wis", "Insight": "wis",
+  "Persuasion": "cha", "Deception": "cha", "Intimidation": "cha",
+};
+
 /* Dashboard categories */
 const CAT = { ACTION: "action", BONUS: "bonus", REACT: "reaction", PASSIVE: "passive" };
 
@@ -327,24 +340,24 @@ GAME_DATA.skillTrees = {
 /* --- Inventory definitions ----------------------------------------------- */
 GAME_DATA.inventory = [
   { group: "Crafting Materials", items: [
-    { id: "rag", name: "Rag", icon: "🧻" },
-    { id: "scrap", name: "Scrap", icon: "🔩" },
-    { id: "alcohol", name: "Alcohol", icon: "🧪" },
-    { id: "binding", name: "Binding", icon: "🪢" },
-    { id: "bottle", name: "Bottle", icon: "🍾" },
+    { id: "rag", name: "Rag", icon: "inv-rag", desc: "A scrap of cloth. Used to craft bandages, molotovs and silencers." },
+    { id: "scrap", name: "Scrap", icon: "inv-scrap", desc: "Bits of metal and parts. Used to craft shivs and upgraded improvised weapons." },
+    { id: "alcohol", name: "Alcohol", icon: "inv-alcohol", desc: "High-proof liquid. Used to craft bandages and molotovs." },
+    { id: "binding", name: "Binding", icon: "inv-binding", desc: "Tape, cord or wire. Used to craft shivs and upgraded improvised weapons." },
+    { id: "bottle", name: "Bottle", icon: "inv-bottle", desc: "An empty glass bottle. Used to craft silencers." },
   ]},
   { group: "Ammunition", items: [
-    { id: "handgunAmmo", name: "Handgun Ammo", icon: "🔫" },
-    { id: "longGunAmmo", name: "Long-Gun Ammo", icon: "🎯" },
-    { id: "arrows", name: "Arrows", icon: "🏹" },
+    { id: "handgunAmmo", name: "Handgun Ammo", icon: "inv-handgunAmmo", desc: "Ammunition for handguns." },
+    { id: "longGunAmmo", name: "Long-Gun Ammo", icon: "inv-longGunAmmo", desc: "Ammunition for rifles and shotguns." },
+    { id: "arrows", name: "Arrows", icon: "inv-arrows", desc: "Ammunition for bows. Can sometimes be retrieved after combat." },
   ]},
   { group: "Crafted Items", items: [
-    { id: "bandage", name: "Bandage", icon: "🩹", recipe: "Rag + Alcohol" },
-    { id: "molotov", name: "Molotov", icon: "🔥", recipe: "Rag + Alcohol" },
-    { id: "shiv", name: "Shiv", icon: "🗡️", recipe: "Scrap + Binding" },
-    { id: "silencer", name: "Silencer", icon: "🤫", recipe: "Rag + Bottle" },
-    { id: "upgradedWeapon", name: "Upgraded Improv. Weapon", icon: "🔨", recipe: "2× Scrap + Binding" },
-    { id: "medkit", name: "Medkit", icon: "⛑️", recipe: "Found only" },
+    { id: "bandage", name: "Bandage", icon: "inv-bandage", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Heals 1d4 + CON when used. Crafting consumes 1 Rag + 1 Alcohol." },
+    { id: "molotov", name: "Molotov", icon: "inv-molotov", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Thrown weapon: 1d10 fire damage; DC 15 DEX save vs catching fire. Crafting consumes 1 Rag + 1 Alcohol." },
+    { id: "shiv", name: "Shiv", icon: "inv-shiv", recipe: "Scrap + Binding", craft: { scrap: 1, binding: 1 }, desc: "Instant kill vs an Unaware creature with max HP ≤ 30; otherwise the target makes a DC 15 CON save or dies. Crafting consumes 1 Scrap + 1 Binding." },
+    { id: "silencer", name: "Silencer", icon: "inv-silencer", recipe: "Rag + Bottle", craft: { rag: 1, bottle: 1 }, desc: "Attach to a firearm to drop its sound level by one category. Crafting consumes 1 Rag + 1 Bottle." },
+    { id: "upgradedWeapon", name: "Upgraded Improv. Weapon", icon: "inv-upgradedWeapon", recipe: "2× Scrap + Binding", craft: { scrap: 2, binding: 1 }, desc: "An improvised weapon reinforced to deal 1d10 damage and only break on a roll of 1. Crafting consumes 2 Scrap + 1 Binding." },
+    { id: "medkit", name: "Medkit", icon: "inv-medkit", recipe: "Found only", desc: "Heals 2d6 + CON when used. Cannot be crafted — found only." },
   ]},
 ];
 /* flat lookup */
@@ -418,7 +431,7 @@ function fmtMod(m) { return (m >= 0 ? "+" : "") + m; }
 /* AP gained per level (cumulative) & PB by level */
 const AP_BY_LEVEL = { 1: 2, 2: 4, 3: 6, 4: 8, 5: 10, 6: 13, 7: 16, 8: 19, 9: 22, 10: 25 };
 function pbForLevel(lvl) { return lvl >= 9 ? 4 : lvl >= 5 ? 3 : 2; }
-function resolveForLevel(lvl) { return Math.min(5, Math.ceil(lvl / 2)); }
+function resolveForLevel(lvl) { return Math.floor((lvl - 1) / 4) + 1; }
 
 function defaultCharacter() {
   return {
@@ -426,7 +439,8 @@ function defaultCharacter() {
     background: "",
     level: 1,
     abilities: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
-    currentHP: 11,
+    currentHP: 10,
+    tempHP: 0,
     wearingArmor: false,
     weapons: [],
     inventory: {},          // id -> qty
@@ -434,6 +448,8 @@ function defaultCharacter() {
     perks: [],              // [{type, choice}]  (player-chosen survivor perks)
     statuses: [],           // [string]
     notes: [],              // [{id, title, body, collapsed}]
+    resolveCurrent: null,   // null = full (synced to max)
+    equip: { weapon1: null, weapon2: null, holster1: null, holster2: null }, // weapon ids
   };
 }
 
@@ -508,6 +524,30 @@ function derive() {
 
   // Build dashboard from all sources' dash entries + dynamic (inventory/weapon) actions
   d.dashboard = buildDashboard(sources, d);
+
+  // ---- Resolve pool (level/4 rounded down + 1: 1 @ lvl1-4, 2 @ 5-8, 3 @ 9-10) ----
+  d.resolveMax = d.resolve;
+  if (character.resolveCurrent == null || character.resolveCurrent > d.resolveMax) {
+    character.resolveCurrent = d.resolveMax;
+  }
+  d.resolveCurrent = character.resolveCurrent;
+
+  // ---- Proficiencies for the Rolls page ----
+  d.mods = mods;
+  const bg = GAME_DATA.backgrounds[character.background];
+  const allPerks = (bg ? bg.perks : []).concat(character.perks);
+  const profSkills = new Set(allPerks.filter(p => p.type === "skill").map(p => p.choice));
+  const profSaveAbility = (allPerks.find(p => p.type === "steel") || {}).choice;
+  const profSaveKey = profSaveAbility ? profSaveAbility.replace(" Saves", "").toLowerCase() : null;
+
+  d.saves = {};
+  ABILITIES.forEach(a => { d.saves[a] = mods[a] + (a === profSaveKey ? pb : 0); });
+
+  d.skills = {};
+  Object.keys(SKILL_ABILITY).forEach(skill => {
+    const a = SKILL_ABILITY[skill];
+    d.skills[skill] = { ability: a, mod: mods[a] + (profSkills.has(skill) ? pb : 0), proficient: profSkills.has(skill) };
+  });
 
   return d;
 }
@@ -602,6 +642,100 @@ function weaponBonuses(weapon) {
   return out;
 }
 
+/* Weapon category -> Weapon Training choice that grants proficiency */
+const WEAPON_PROF_MAP = { blunt: "Blunt Melee", improvised: "Improvised", handgun: "Handguns", rifle: "Rifles", bow: "Bows" };
+function weaponProficient(w) {
+  const bg = GAME_DATA.backgrounds[character.background];
+  const allPerks = (bg ? bg.perks : []).concat(character.perks);
+  const need = WEAPON_PROF_MAP[w.category];
+  return !!need && allPerks.some(p => p.type === "weapon" && p.choice === need);
+}
+/* Ability used for a weapon's attack roll */
+function weaponAbility(w) {
+  return (w.category === "blunt" || w.category === "improvised" || w.category === "melee") ? "str" : "dex";
+}
+function weaponToHitMod(w) {
+  return D.mods[weaponAbility(w)] + (weaponProficient(w) ? D.pb : 0);
+}
+
+/* ============================================================
+   4b. DICE & ROLLING
+   ============================================================ */
+function rollDie(sides) { return 1 + Math.floor(Math.random() * sides); }
+
+/* Parse a dice/modifier expression like "2d8 + 3" or "1d20 + STR".
+   Ability tokens (STR/DEX/...) are replaced with the character's modifier. */
+function parseFormula(expr) {
+  let str = String(expr || "").toUpperCase();
+  ABILITIES.forEach(a => {
+    const re = new RegExp("\\b" + a.toUpperCase() + "\\b", "g");
+    str = str.replace(re, (D.mods[a] >= 0 ? "+" : "") + D.mods[a]);
+  });
+  const parts = [];
+  const re = /([+-]?\s*\d*d\d+)|([+-]?\s*\d+)/g;
+  let m;
+  while ((m = re.exec(str))) {
+    const tok = m[0].replace(/\s+/g, "");
+    if (!tok) continue;
+    if (/d/i.test(tok)) {
+      let sign = 1, t = tok;
+      if (t[0] === "+") t = t.slice(1);
+      else if (t[0] === "-") { sign = -1; t = t.slice(1); }
+      const [nStr, sidesStr] = t.split(/d/i);
+      const n = nStr === "" ? 1 : parseInt(nStr, 10);
+      const sides = parseInt(sidesStr, 10);
+      parts.push({ type: "dice", n, sides, sign });
+    } else {
+      parts.push({ type: "flat", value: parseInt(tok, 10) });
+    }
+  }
+  return parts;
+}
+
+function rollFormula(parts) {
+  let total = 0;
+  const detail = [];
+  parts.forEach(p => {
+    if (p.type === "dice") {
+      const rolls = [];
+      for (let i = 0; i < p.n; i++) rolls.push(rollDie(p.sides));
+      const sum = rolls.reduce((a, b) => a + b, 0) * p.sign;
+      total += sum;
+      detail.push(`${p.sign < 0 ? "-" : ""}${p.n}d${p.sides} [${rolls.join(", ")}]`);
+    } else {
+      total += p.value;
+      if (p.value !== 0) detail.push(fmtMod(p.value));
+    }
+  });
+  return { total, detail: detail.join(" ") || "0" };
+}
+
+let rollLogTimer = 0;
+function addRollLog(title, detail, total) {
+  const log = document.getElementById("roll-log");
+  const entry = document.createElement("div");
+  entry.className = "roll-entry";
+  entry.innerHTML = `<div class="re-title">${esc(title)}<span class="re-total">${total}</span></div><div class="re-detail">${esc(detail)}</div>`;
+  log.appendChild(entry);
+  while (log.children.length > 5) log.removeChild(log.firstChild);
+  setTimeout(() => entry.remove(), 8000);
+}
+
+/* Roll a formula string (e.g. weapon damage "2d8 + DEX") and log it */
+function rollDamage(formula, label) {
+  const parts = parseFormula(formula);
+  if (!parts.length) { toast("Nothing to roll."); return; }
+  const { total, detail } = rollFormula(parts);
+  addRollLog(label, detail, total);
+}
+
+/* Roll d20 + a flat modifier and log it */
+function rollD20(modifier, label) {
+  const die = rollDie(20);
+  const total = die + modifier;
+  addRollLog(label, `d20 [${die}] ${fmtMod(modifier)}`, total);
+}
+
 /* ============================================================
    5. RENDER
    ============================================================ */
@@ -618,6 +752,7 @@ function renderAll() {
   renderWeapons();
   renderBackpack();
   renderSkillTrees();
+  renderRollsTab();
   renderNotes();
 }
 
@@ -628,18 +763,19 @@ function renderSummary() {
   const bg = GAME_DATA.backgrounds[character.background];
   document.getElementById("summary-bg").textContent = bg ? `${bg.icon} ${bg.name}` : "No Background";
 
+  const hpVal = `${character.currentHP}/${D.maxHp}` + (character.tempHP > 0 ? ` +${character.tempHP}` : "");
   const stats = [
-    { lbl: "HP", val: `${character.currentHP}/${D.maxHp}`, cls: "hp" },
+    { lbl: "HP", val: hpVal, cls: "hp" },
     { lbl: "AC", val: D.ac },
     { lbl: "Init", val: fmtMod(D.initiative) + (D.flags.initAdvantage ? "▲" : "") },
     { lbl: "Prof", val: fmtMod(D.pb) },
     { lbl: "Speed", val: D.speed + "ft" },
     { lbl: "AP", val: D.apAvailable, cls: "ap" },
-    { lbl: "Resolve", val: D.resolve },
+    { lbl: "Resolve", val: `${D.resolveCurrent}/${D.resolveMax}`, cls: "ap resolve-pill", id: "summary-resolve" },
     { lbl: "Mnvr DC", val: D.maneuverDC },
   ];
   document.getElementById("summary-stats").innerHTML = stats.map(s =>
-    `<div class="stat-pill ${s.cls || ""}"><span class="sp-val">${s.val}</span><span class="sp-lbl">${s.lbl}</span></div>`
+    `<div class="stat-pill ${s.cls || ""}" ${s.id ? `id="${s.id}"` : ""}><span class="sp-val">${s.val}</span><span class="sp-lbl">${s.lbl}</span></div>`
   ).join("");
 
   // Status chips
@@ -709,6 +845,9 @@ function renderCharacterTab() {
   fill.style.width = pct + "%";
   fill.className = "hp-bar-fill" + (pct <= 25 ? " crit" : pct <= 50 ? " low" : "");
 
+  // Temp HP
+  document.getElementById("temp-hp-val").textContent = character.tempHP || 0;
+
   // derived stat cards
   const cards = [
     { lbl: "Armor Class", val: D.ac, accent: true },
@@ -716,7 +855,7 @@ function renderCharacterTab() {
     { lbl: "Proficiency", val: fmtMod(D.pb) },
     { lbl: "Movement", val: D.speed + " ft" },
     { lbl: "Available AP", val: D.apAvailable, accent: true },
-    { lbl: "Resolve", val: D.resolve },
+    { lbl: "Resolve", val: `${D.resolveCurrent} / ${D.resolveMax}` },
     { lbl: "Maneuver DC", val: D.maneuverDC },
     { lbl: "Max HP", val: D.maxHp },
   ];
@@ -729,7 +868,7 @@ function renderCharacterTab() {
     const m = mod(character.abilities[a]);
     return `<div class="ability-card">
       <div class="ab-name">${ABILITY_NAMES[a]}</div>
-      <div class="ab-mod">${fmtMod(m)}</div>
+      <div class="ab-mod rollable" data-roll-ability="${a}" title="Roll d20 ${fmtMod(m)}">${fmtMod(m)}</div>
       <input type="number" min="1" max="20" value="${character.abilities[a]}" data-ability="${a}" />
     </div>`;
   }).join("");
@@ -738,10 +877,10 @@ function renderCharacterTab() {
 /* ---- Actions dashboard ---- */
 function renderActionsDashboard() {
   const cols = [
-    { key: "action", cls: "act", icon: "⚔️", label: "Actions" },
-    { key: "bonus", cls: "bonus", icon: "⚡", label: "Bonus Actions" },
-    { key: "reaction", cls: "react", icon: "🛡️", label: "Reactions" },
-    { key: "passive", cls: "pass", icon: "🧬", label: "Passive Effects" },
+    { key: "action", cls: "act", icon: "attack", label: "Actions" },
+    { key: "bonus", cls: "bonus", icon: "icon-ap", label: "Bonus Actions" },
+    { key: "reaction", cls: "react", icon: "icon-ac", label: "Reactions" },
+    { key: "passive", cls: "pass", icon: "icon-resolve-pb", label: "Passive Effects" },
   ];
   document.getElementById("actions-dashboard").innerHTML = cols.map(col => {
     const list = D.dashboard[col.key] || [];
@@ -752,7 +891,7 @@ function renderActionsDashboard() {
           </div>`).join("")
       : `<div class="empty-note">Nothing yet — invest in trees, perks &amp; gear.</div>`;
     return `<div class="action-col ${col.cls}">
-        <div class="action-col-head">${col.icon} ${col.label}<span class="count">${list.length}</span></div>
+        <div class="action-col-head">${icon(col.icon)} ${col.label}<span class="count">${list.length}</span></div>
         <div class="action-col-body">${body}</div>
       </div>`;
   }).join("");
@@ -901,8 +1040,12 @@ function renderWeapons() {
         </div>
       </div>
 
+      <div class="weapon-rolls">
+        <button class="attack-roll-btn" data-roll-attack="${w.id}">${icon("attack")} Attack ${fmtMod(weaponToHitMod(w))}</button>
+      </div>
+
       <div class="weapon-stats">
-        <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val">${esc(w.damage || "—")}</div></div>
+        <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val rollable" data-roll-damage="${w.id}" title="Click to roll">${esc(w.damage || "—")}</div></div>
         <div class="wstat"><div class="ws-lbl">Range</div><div class="ws-val">${esc(w.range || "—")}</div></div>
         <div class="wstat ${soundCls}"><div class="ws-lbl">Sound</div><div class="ws-val">${esc(w.sound || "—")}</div></div>
         <div class="wstat"><div class="ws-lbl">Ammo Type</div><div class="ws-val">${esc(w.ammoType || "—")}</div></div>
@@ -934,13 +1077,43 @@ function renderWeapons() {
 }
 
 /* ---- Backpack ---- */
+const GENERAL_SLOTS = 12;
+const EQUIP_SLOT_DEFS = [
+  { key: "weapon1", label: "Weapon Slot 1", icon: "slot-weapon" },
+  { key: "weapon2", label: "Weapon Slot 2", icon: "slot-weapon" },
+  { key: "holster1", label: "Holster 1", icon: "slot-holster" },
+  { key: "holster2", label: "Holster 2", icon: "slot-holster" },
+];
+
+function renderEquipSlots() {
+  if (!character.equip) character.equip = { weapon1: null, weapon2: null, holster1: null, holster2: null };
+  const root = document.getElementById("equip-slots");
+  root.innerHTML = EQUIP_SLOT_DEFS.map(slot => {
+    const wid = character.equip[slot.key];
+    const w = character.weapons.find(x => x.id === wid);
+    const opts = [`<option value="">— Empty —</option>`]
+      .concat(character.weapons.map(x => `<option value="${x.id}" ${x.id === wid ? "selected" : ""}>${esc(x.name || "Unnamed")}</option>`));
+    return `<div class="equip-slot ${w ? "filled" : ""}">
+      <div class="es-label">${icon(slot.icon)} ${slot.label}</div>
+      <select data-equip-slot="${slot.key}">${opts.join("")}</select>
+    </div>`;
+  }).join("");
+}
+
 function renderBackpack() {
+  renderEquipSlots();
+
+  const used = Math.min(GENERAL_SLOTS, estimateSlots());
+  document.getElementById("general-slots").innerHTML = Array.from({ length: GENERAL_SLOTS }, (_, i) =>
+    `<div class="gen-slot ${i < used ? "filled" : ""}"></div>`
+  ).join("");
+
   const root = document.getElementById("backpack");
   root.innerHTML = GAME_DATA.inventory.map(group => {
     const items = group.items.map(it => {
       const qty = character.inventory[it.id] || 0;
-      return `<div class="inv-item ${qty > 0 ? "has-qty" : "zero"}">
-        <span class="inv-icon">${it.icon}</span>
+      return `<div class="inv-item ${qty > 0 ? "has-qty" : "zero"}" data-item-info="${it.id}">
+        <span class="inv-icon">${icon(it.icon)}</span>
         <div class="inv-name">${esc(it.name)}</div>
         <div class="inv-qty">${qty}</div>
         <div class="inv-controls">
@@ -956,12 +1129,28 @@ function renderBackpack() {
     </div>`;
   }).join("");
 
-  // slot estimate (stacks: materials/ammo per 5/10, crafted per 2-3)
-  document.getElementById("slot-counter").textContent = `Est. slots used: ${estimateSlots()} / 12`;
+  document.getElementById("slot-counter").textContent = `Est. slots used: ${estimateSlots()} / ${GENERAL_SLOTS}`;
+
+  renderCrafting();
 }
 
 function groupIcon(name) {
-  return name.includes("Crafting") ? "🧰" : name.includes("Ammuni") ? "📦" : "🛠️";
+  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : "inv-medkit");
+}
+
+/* ---- Crafting ---- */
+function renderCrafting() {
+  const root = document.getElementById("crafting");
+  const craftables = GAME_DATA.invById ? GAME_DATA.inventory.flatMap(g => g.items).filter(it => it.craft) : [];
+  root.innerHTML = craftables.map(it => {
+    const have = (id, n) => (character.inventory[id] || 0) >= n;
+    const canCraft = Object.entries(it.craft).every(([id, n]) => have(id, n));
+    return `<div class="craft-card">
+      <div class="cc-name">${icon(it.icon)} ${esc(it.name)}</div>
+      <div class="cc-recipe">${esc(it.recipe)}</div>
+      <button data-craft="${it.id}" ${canCraft ? "" : "disabled"}>Craft</button>
+    </div>`;
+  }).join("");
 }
 
 function estimateSlots() {
@@ -1062,6 +1251,32 @@ function renderNotes() {
     </div>`).join("");
 }
 
+/* ---- Rolls tab ---- */
+function renderRollsTab() {
+  document.getElementById("roll-abilities").innerHTML = ABILITIES.map(a => `
+    <div class="roll-card">
+      <div class="rc-name">${ABILITY_NAMES[a]}</div>
+      <div class="rc-sub">Ability Check</div>
+      <div class="rc-mod" data-roll-d20="${D.mods[a]}" data-roll-label="${esc(ABILITY_NAMES[a])} Check">${fmtMod(D.mods[a])}</div>
+    </div>`).join("");
+
+  document.getElementById("roll-saves").innerHTML = ABILITIES.map(a => `
+    <div class="roll-card">
+      <div class="rc-name">${ABILITY_NAMES[a]}</div>
+      <div class="rc-sub">Saving Throw</div>
+      <div class="rc-mod" data-roll-d20="${D.saves[a]}" data-roll-label="${esc(ABILITY_NAMES[a])} Save">${fmtMod(D.saves[a])}</div>
+    </div>`).join("");
+
+  document.getElementById("roll-skills").innerHTML = Object.keys(SKILL_ABILITY).map(skill => {
+    const s = D.skills[skill];
+    return `<div class="roll-card">
+      <div class="rc-name">${esc(skill)}${s.proficient ? " ★" : ""}</div>
+      <div class="rc-sub">${ABILITY_NAMES[s.ability]}</div>
+      <div class="rc-mod" data-roll-d20="${s.mod}" data-roll-label="${esc(skill)}">${fmtMod(s.mod)}</div>
+    </div>`;
+  }).join("");
+}
+
 /* ---- Rules reference ---- */
 function renderReference() {
   document.getElementById("ref-body").innerHTML = GAME_DATA.keywords.map(k =>
@@ -1092,6 +1307,7 @@ document.getElementById("tab-nav").addEventListener("click", e => {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b === btn));
   const tab = btn.dataset.tab;
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + tab));
+  document.body.dataset.activeTab = tab;
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
@@ -1139,6 +1355,54 @@ document.getElementById("hp-full").addEventListener("click", () => {
   character.currentHP = D.maxHp; save(); renderSummary(); renderCharacterTab();
 });
 
+/* Temp HP controls */
+document.querySelectorAll(".hp-btn[data-temp]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const delta = Number(btn.dataset.temp);
+    character.tempHP = Math.max(0, (character.tempHP || 0) + delta);
+    save(); renderSummary(); renderCharacterTab();
+  });
+});
+document.getElementById("temp-hp-clear").addEventListener("click", () => {
+  character.tempHP = 0; save(); renderSummary(); renderCharacterTab();
+});
+
+/* Resolve: click to spend, shift-click (or right-click) to restore */
+document.getElementById("summary-stats").addEventListener("click", e => {
+  if (!e.target.closest("#summary-resolve")) return;
+  if (character.resolveCurrent > 0) {
+    character.resolveCurrent -= 1;
+    toast(`Resolve spent (${character.resolveCurrent}/${D.resolveMax})`);
+  } else {
+    toast("No Resolve remaining.");
+  }
+  save(); renderSummary(); renderCharacterTab();
+});
+document.getElementById("summary-stats").addEventListener("contextmenu", e => {
+  if (!e.target.closest("#summary-resolve")) return;
+  e.preventDefault();
+  if (character.resolveCurrent < D.resolveMax) {
+    character.resolveCurrent += 1;
+    toast(`Resolve restored (${character.resolveCurrent}/${D.resolveMax})`);
+  }
+  save(); renderSummary(); renderCharacterTab();
+});
+
+/* Rolls tab click-to-roll (delegated) */
+document.getElementById("tab-rolls").addEventListener("click", e => {
+  const el = e.target.closest("[data-roll-d20]");
+  if (!el) return;
+  rollD20(Number(el.dataset.rollD20), el.dataset.rollLabel);
+});
+
+/* Ability score click-to-roll (delegated) */
+document.getElementById("ability-grid").addEventListener("click", e => {
+  const el = e.target.closest("[data-roll-ability]");
+  if (!el) return;
+  const a = el.dataset.rollAbility;
+  rollD20(D.mods[a], `${ABILITY_NAMES[a]} Check`);
+});
+
 /* Perk removal (delegated) */
 document.getElementById("perks-list").addEventListener("click", e => {
   const idx = e.target.dataset.removePerk;
@@ -1166,6 +1430,18 @@ document.getElementById("status-adder").addEventListener("click", e => {
 
 /* Weapons: ammo, edit, delete (delegated) */
 document.getElementById("weapons-grid").addEventListener("click", e => {
+  const atkBtn = e.target.closest("[data-roll-attack]");
+  if (atkBtn) {
+    const w = character.weapons.find(x => x.id === atkBtn.dataset.rollAttack);
+    if (w) rollD20(weaponToHitMod(w), `${w.name || "Weapon"} — Attack`);
+    return;
+  }
+  const dmgBtn = e.target.closest("[data-roll-damage]");
+  if (dmgBtn) {
+    const w = character.weapons.find(x => x.id === dmgBtn.dataset.rollDamage);
+    if (w) rollDamage(w.damage, `${w.name || "Weapon"} — Damage`);
+    return;
+  }
   const ammoBtn = e.target.closest("[data-ammo]");
   if (ammoBtn) {
     const [id, op] = ammoBtn.dataset.ammo.split(":");
@@ -1188,14 +1464,67 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
   }
 });
 
-/* Backpack qty (delegated) */
+/* Backpack qty / item info (delegated) */
 document.getElementById("backpack").addEventListener("click", e => {
   const btn = e.target.closest("[data-inv]");
-  if (!btn) return;
-  const [id, delta] = btn.dataset.inv.split(":");
-  const cur = character.inventory[id] || 0;
-  character.inventory[id] = Math.max(0, cur + Number(delta));
+  if (btn) {
+    const [id, delta] = btn.dataset.inv.split(":");
+    const cur = character.inventory[id] || 0;
+    character.inventory[id] = Math.max(0, cur + Number(delta));
+    save(); renderBackpack(); renderActionsDashboard();
+    return;
+  }
+  const info = e.target.closest("[data-item-info]");
+  if (info) showItemPopup(info.dataset.itemInfo, info);
+});
+
+/* Equip slot selects (delegated) */
+document.getElementById("equip-slots").addEventListener("change", e => {
+  const sel = e.target.closest("[data-equip-slot]");
+  if (!sel) return;
+  character.equip[sel.dataset.equipSlot] = sel.value || null;
+  save(); renderBackpack();
+});
+
+/* Crafting (delegated) */
+document.getElementById("crafting").addEventListener("click", e => {
+  const btn = e.target.closest("[data-craft]");
+  if (!btn || btn.disabled) return;
+  const id = btn.dataset.craft;
+  const item = GAME_DATA.invById[id];
+  const have = Object.entries(item.craft).every(([mid, n]) => (character.inventory[mid] || 0) >= n);
+  if (!have) return;
+  Object.entries(item.craft).forEach(([mid, n]) => { character.inventory[mid] -= n; });
+  character.inventory[id] = (character.inventory[id] || 0) + 1;
   save(); renderBackpack(); renderActionsDashboard();
+  toast(`Crafted ${item.name}`);
+});
+
+/* Item info popup */
+function showItemPopup(id, anchor) {
+  const item = GAME_DATA.invById[id];
+  if (!item) return;
+  const popup = document.getElementById("item-popup");
+  document.getElementById("item-popup-title").textContent = item.name;
+  document.getElementById("item-popup-body").textContent = item.desc || "No description.";
+  popup.hidden = false;
+  const rect = anchor.getBoundingClientRect();
+  const top = window.scrollY + rect.bottom + 6;
+  let left = window.scrollX + rect.left;
+  const maxLeft = window.scrollX + document.documentElement.clientWidth - 260;
+  if (left > maxLeft) left = Math.max(8, maxLeft);
+  popup.style.top = `${top}px`;
+  popup.style.left = `${left}px`;
+}
+function hideItemPopup() {
+  document.getElementById("item-popup").hidden = true;
+}
+document.getElementById("item-popup-close").addEventListener("click", hideItemPopup);
+document.addEventListener("click", e => {
+  const popup = document.getElementById("item-popup");
+  if (popup.hidden) return;
+  if (e.target.closest("#item-popup") || e.target.closest("[data-item-info]")) return;
+  hideItemPopup();
 });
 
 /* Skill trees (delegated) */
@@ -1391,6 +1720,7 @@ document.getElementById("reset-btn").addEventListener("click", () => {
    9. INIT
    ============================================================ */
 function init() {
+  document.body.dataset.activeTab = "character";
   renderReference();
   renderAll();
   save(false);
