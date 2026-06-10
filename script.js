@@ -451,7 +451,8 @@ function defaultCharacter() {
     statuses: [],           // [string]
     notes: [],              // [{id, title, body, collapsed}]
     resolveCurrent: null,   // null = full (synced to max)
-    equip: { longgun: null, handgun: null, melee: null }, // weapon ids
+    weaponSlots: [null],    // rifle/bow/melee weapon ids (max 3)
+    holsters: [null],       // handgun ids (max 2)
   };
 }
 
@@ -462,9 +463,17 @@ function loadCharacter() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const c = Object.assign(defaultCharacter(), JSON.parse(raw));
-      if (!c.equip || !("longgun" in c.equip) || !("handgun" in c.equip) || !("melee" in c.equip)) {
-        c.equip = Object.assign({ longgun: null, handgun: null, melee: null }, c.equip);
+      // Migrate old fixed equip {longgun, handgun, melee} → addable slot arrays.
+      if (!Array.isArray(c.weaponSlots)) {
+        const ws = [];
+        if (c.equip && c.equip.longgun) ws.push(c.equip.longgun);
+        if (c.equip && c.equip.melee) ws.push(c.equip.melee);
+        c.weaponSlots = ws.length ? ws : [null];
       }
+      if (!Array.isArray(c.holsters)) {
+        c.holsters = (c.equip && c.equip.handgun) ? [c.equip.handgun] : [null];
+      }
+      delete c.equip;
       return c;
     }
   } catch (e) { console.warn("Load failed", e); }
@@ -1108,28 +1117,39 @@ function renderWeapons() {
 
 /* ---- Backpack ---- */
 const GENERAL_SLOTS = 12;
-const EQUIP_SLOT_DEFS = [
-  { key: "longgun", label: "Long Gun Slot", icon: "slot-weapon", categories: ["rifle", "bow"] },
-  { key: "handgun", label: "Handgun Holster", icon: "slot-holster", categories: ["handgun"] },
-  { key: "melee", label: "Melee Weapon", icon: "slot-weapon", categories: ["blunt", "melee", "improvised"] },
-];
+const MAX_HOLSTERS = 2;
+const MAX_WEAPON_SLOTS = 3;
+const HOLSTER_CATS = ["handgun"];
+const WEAPON_SLOT_CATS = ["rifle", "bow", "blunt", "melee", "improvised"];
+
+function ensureEquipArrays() {
+  if (!Array.isArray(character.weaponSlots)) character.weaponSlots = [null];
+  if (!Array.isArray(character.holsters)) character.holsters = [null];
+}
+
+function equipSlotHtml(group, idx, wid, cats, iconName, labelWord) {
+  const w = character.weapons.find(x => x.id === wid);
+  const choices = character.weapons.filter(x => cats.includes(x.category));
+  const opts = [`<option value="">— Empty —</option>`]
+    .concat(choices.map(x => `<option value="${x.id}" ${x.id === wid ? "selected" : ""}>${esc(x.name || "Unnamed")}</option>`));
+  return `<div class="equip-slot ${w ? "filled" : ""}">
+    <div class="es-label">${icon(iconName)} ${labelWord} ${idx + 1}
+      <button class="es-remove" data-remove-slot="${group}:${idx}" title="Remove slot">✕</button></div>
+    <select data-equip-slot="${group}:${idx}">${opts.join("")}</select>
+  </div>`;
+}
 
 function renderEquipSlots() {
-  if (!character.equip || EQUIP_SLOT_DEFS.some(s => !(s.key in character.equip))) {
-    character.equip = { longgun: null, handgun: null, melee: null };
-  }
+  ensureEquipArrays();
   const root = document.getElementById("equip-slots");
-  root.innerHTML = EQUIP_SLOT_DEFS.map(slot => {
-    const wid = character.equip[slot.key];
-    const w = character.weapons.find(x => x.id === wid);
-    const choices = character.weapons.filter(x => slot.categories.includes(x.category));
-    const opts = [`<option value="">— Empty —</option>`]
-      .concat(choices.map(x => `<option value="${x.id}" ${x.id === wid ? "selected" : ""}>${esc(x.name || "Unnamed")}</option>`));
-    return `<div class="equip-slot ${w ? "filled" : ""}">
-      <div class="es-label">${icon(slot.icon)} ${slot.label}</div>
-      <select data-equip-slot="${slot.key}">${opts.join("")}</select>
-    </div>`;
-  }).join("");
+  let html = "";
+  character.weaponSlots.forEach((wid, i) => { html += equipSlotHtml("weapon", i, wid, WEAPON_SLOT_CATS, "slot-weapon", "Weapon Slot"); });
+  if (character.weaponSlots.length < MAX_WEAPON_SLOTS)
+    html += `<button class="add-slot-btn" data-add-slot="weapon">${icon("slot-weapon")} + Add Weapon Slot</button>`;
+  character.holsters.forEach((wid, i) => { html += equipSlotHtml("holster", i, wid, HOLSTER_CATS, "slot-holster", "Holster"); });
+  if (character.holsters.length < MAX_HOLSTERS)
+    html += `<button class="add-slot-btn" data-add-slot="holster">${icon("slot-holster")} + Add Holster</button>`;
+  root.innerHTML = html;
 }
 
 function renderBackpack() {
@@ -1488,6 +1508,21 @@ document.getElementById("tab-rolls").addEventListener("click", e => {
   rollD20(Number(el.dataset.rollD20), el.dataset.rollLabel);
 });
 
+/* Custom dice roller — accepts any formula (e.g. "3d5 + 5d76 + 21", "2d6 + STR"). */
+function doCustomRoll() {
+  const input = document.getElementById("custom-roll-input");
+  const expr = input.value.trim();
+  if (!expr) { toast("Enter a dice formula, e.g. 2d6 + 3"); return; }
+  const parts = parseFormula(expr);
+  if (!parts.length) { toast("Couldn't read that formula."); return; }
+  const { total, detail } = rollFormula(parts);
+  addRollLog(`Custom: ${expr}`, detail, total);
+}
+document.getElementById("custom-roll-btn").addEventListener("click", doCustomRoll);
+document.getElementById("custom-roll-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") doCustomRoll();
+});
+
 /* Ability score click-to-roll (delegated) */
 document.getElementById("ability-grid").addEventListener("click", e => {
   const el = e.target.closest("[data-roll-ability]");
@@ -1607,8 +1642,30 @@ document.getElementById("backpack").addEventListener("click", e => {
 document.getElementById("equip-slots").addEventListener("change", e => {
   const sel = e.target.closest("[data-equip-slot]");
   if (!sel) return;
-  character.equip[sel.dataset.equipSlot] = sel.value || null;
+  const [group, idxStr] = sel.dataset.equipSlot.split(":");
+  const arr = group === "holster" ? character.holsters : character.weaponSlots;
+  arr[Number(idxStr)] = sel.value || null;
   save(); renderAll();
+});
+
+/* Add / remove equip slots (delegated) */
+document.getElementById("equip-slots").addEventListener("click", e => {
+  const addBtn = e.target.closest("[data-add-slot]");
+  if (addBtn) {
+    ensureEquipArrays();
+    if (addBtn.dataset.addSlot === "holster" && character.holsters.length < MAX_HOLSTERS) character.holsters.push(null);
+    else if (addBtn.dataset.addSlot === "weapon" && character.weaponSlots.length < MAX_WEAPON_SLOTS) character.weaponSlots.push(null);
+    save(); renderAll();
+    return;
+  }
+  const rmBtn = e.target.closest("[data-remove-slot]");
+  if (rmBtn) {
+    const [group, idxStr] = rmBtn.dataset.removeSlot.split(":");
+    const arr = group === "holster" ? character.holsters : character.weaponSlots;
+    arr.splice(Number(idxStr), 1);
+    if (arr.length === 0) arr.push(null); // always keep at least one slot
+    save(); renderAll();
+  }
 });
 
 /* Crafting (delegated) */
