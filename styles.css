@@ -872,11 +872,12 @@ body[data-active-tab]:not([data-active-tab="character"]) .ref-panel {
 }
 
 /* ====================== RESOLVE BUTTON / RESTS ====================== */
-.stat-card.resolve-pill { cursor: pointer; border: 1px solid var(--green-deep); }
-.stat-card.resolve-pill:hover { background: var(--green-glow); }
+.stat-card.resolve-pill { cursor: pointer; }
+.stat-card.resolve-pill:hover { background: var(--green-glow); border-color: var(--green-deep); }
 .rest-controls { position: relative; margin-top: 14px; }
 .rest-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .rest-btn .icon { width: 16px; height: 16px; }
+.rest-menu[hidden] { display: none; }
 .rest-menu {
   position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 30;
   display: flex; flex-direction: column; gap: 4px;
