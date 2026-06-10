@@ -1135,12 +1135,24 @@ function renderEquipSlots() {
 function renderBackpack() {
   renderEquipSlots();
 
+  const stack3 = !!(D && D.flags && D.flags.craftedStack3);
   const filledItems = GAME_DATA.inventory.flatMap(g => g.items).filter(it => (character.inventory[it.id] || 0) > 0);
-  const cells = filledItems.map(it => `<div class="gen-slot filled" data-item-info="${it.id}">
-    <span class="gs-icon">${icon(it.icon)}</span>
-    <div class="gs-name">${esc(it.name)}</div>
-    <div class="gs-qty">×${character.inventory[it.id]}</div>
-  </div>`);
+  // Build one slot per stack (items overflow into additional slots when over their stack max).
+  const cells = [];
+  filledItems.forEach(it => {
+    let remaining = character.inventory[it.id] || 0;
+    const max = stackMax(it, stack3);
+    while (remaining > 0) {
+      const inThis = Math.min(max, remaining);
+      remaining -= inThis;
+      cells.push(`<div class="gen-slot filled" data-item-info="${it.id}">
+        <span class="gs-icon">${icon(it.icon)}</span>
+        <div class="gs-name">${esc(it.name)}</div>
+        <div class="gs-qty">${inThis}/${max}</div>
+      </div>`);
+    }
+  });
+  const usedSlots = cells.length;
   while (cells.length < GENERAL_SLOTS) cells.push(`<div class="gen-slot"></div>`);
   document.getElementById("general-slots").innerHTML = cells.slice(0, GENERAL_SLOTS).join("");
 
@@ -1165,9 +1177,16 @@ function renderBackpack() {
     </div>`;
   }).join("");
 
-  document.getElementById("slot-counter").textContent = `Slots used: ${Math.min(filledItems.length, GENERAL_SLOTS)} / ${GENERAL_SLOTS}`;
+  document.getElementById("slot-counter").textContent = `Slots used: ${Math.min(usedSlots, GENERAL_SLOTS)} / ${GENERAL_SLOTS}`;
 
   renderCrafting();
+}
+
+/* Max stack size per item: materials 5, ammo 10, crafted 2 (3 with Efficient Workflow). */
+function stackMax(it, stack3) {
+  if (it.craft || it.id === "medkit") return stack3 ? 3 : 2;
+  if (/Ammo|arrows/i.test(it.id)) return 10;
+  return 5;
 }
 
 function groupIcon(name) {
