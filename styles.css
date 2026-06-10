@@ -817,6 +817,14 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
 }
 .roll-card .rc-mod:hover { background: var(--green-glow); }
 
+.custom-roll { display: flex; gap: 8px; }
+.custom-roll input {
+  flex: 1; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--text); padding: 10px 12px; font-size: 0.95rem; font-family: inherit;
+}
+.custom-roll input:focus { outline: none; border-color: var(--green-deep); box-shadow: 0 0 0 2px var(--green-glow); }
+.custom-roll .btn { white-space: nowrap; }
+
 /* ====================== EQUIP / GENERAL SLOTS ====================== */
 .equip-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 10px; margin-bottom: 18px; }
 .equip-slot {
@@ -830,6 +838,19 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
   width: 100%; margin-top: 6px; background: var(--bg-2); border: 1px solid var(--line);
   border-radius: 6px; color: var(--text); padding: 6px; font-size: 0.78rem; min-height: 36px;
 }
+.equip-slot .es-remove {
+  margin-left: auto; background: none; border: none; color: var(--text-faint);
+  cursor: pointer; font-size: 0.8rem; line-height: 1; padding: 0 2px;
+}
+.equip-slot .es-remove:hover { color: var(--danger, #c0392b); }
+.add-slot-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--bg-2); border: 1px dashed var(--green-deep); border-radius: var(--radius-sm);
+  color: var(--green); padding: 10px; font-size: 0.72rem; text-transform: uppercase;
+  letter-spacing: 0.6px; cursor: pointer; min-height: 64px;
+}
+.add-slot-btn:hover { background: var(--green-glow); }
+.add-slot-btn .icon { width: 16px; height: 16px; }
 
 .general-slots { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 12px; }
 .gen-slot {
