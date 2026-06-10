@@ -1831,3 +1831,17 @@ function init() {
   save(false);
 }
 init();
+
+/* Backstop: keep the display in sync with the data even if some handler
+   forgets to re-render. Only re-renders when the data actually changed and
+   never while you're typing in a field or have a dropdown open. */
+let __lastSnapshot = JSON.stringify(character);
+setInterval(() => {
+  const ae = document.activeElement;
+  if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return; // don't interrupt input
+  const snap = JSON.stringify(character);
+  if (snap !== __lastSnapshot) {
+    __lastSnapshot = snap;
+    renderAll();
+  }
+}, 1000);
