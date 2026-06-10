@@ -687,7 +687,7 @@ function parseFormula(expr) {
     str = str.replace(re, (D.mods[a] >= 0 ? "+" : "") + D.mods[a]);
   });
   const parts = [];
-  const re = /([+-]?\s*\d*d\d+)|([+-]?\s*\d+)/g;
+  const re = /([+-]?\s*\d*d\d+)|([+-]?\s*\d+)/gi;
   let m;
   while ((m = re.exec(str))) {
     const tok = m[0].replace(/\s+/g, "");
@@ -1381,11 +1381,11 @@ document.querySelectorAll(".hp-btn[data-temp]").forEach(btn => {
   btn.addEventListener("click", () => {
     const delta = Number(btn.dataset.temp);
     character.tempHP = Math.max(0, (character.tempHP || 0) + delta);
-    save(); renderSummary(); renderCharacterTab();
+    save(); renderAll();
   });
 });
 document.getElementById("temp-hp-clear").addEventListener("click", () => {
-  character.tempHP = 0; save(); renderSummary(); renderCharacterTab();
+  character.tempHP = 0; save(); renderAll();
 });
 
 /* Resolve: click to spend, shift-click (or right-click) to restore */
@@ -1397,7 +1397,7 @@ document.getElementById("summary-stats").addEventListener("click", e => {
   } else {
     toast("No Resolve remaining.");
   }
-  save(); renderSummary(); renderCharacterTab();
+  save(); renderAll();
 });
 document.getElementById("summary-stats").addEventListener("contextmenu", e => {
   if (!e.target.closest("#summary-resolve")) return;
@@ -1406,7 +1406,7 @@ document.getElementById("summary-stats").addEventListener("contextmenu", e => {
     character.resolveCurrent += 1;
     toast(`Resolve restored (${character.resolveCurrent}/${D.resolveMax})`);
   }
-  save(); renderSummary(); renderCharacterTab();
+  save(); renderAll();
 });
 
 /* Resolve button on the Character tab */
@@ -1418,7 +1418,7 @@ document.getElementById("char-stat-grid").addEventListener("click", e => {
   } else {
     toast("No Resolve remaining.");
   }
-  save(); renderSummary(); renderCharacterTab();
+  save(); renderAll();
 });
 document.getElementById("char-stat-grid").addEventListener("contextmenu", e => {
   if (!e.target.closest("#char-resolve-card")) return;
@@ -1427,7 +1427,7 @@ document.getElementById("char-stat-grid").addEventListener("contextmenu", e => {
     character.resolveCurrent += 1;
     toast(`Resolve restored (${character.resolveCurrent}/${D.resolveMax})`);
   }
-  save(); renderSummary(); renderCharacterTab();
+  save(); renderAll();
 });
 
 /* Rests */
@@ -1458,7 +1458,7 @@ document.getElementById("rest-menu").addEventListener("click", e => {
     toast("Long rest taken — HP and Resolve fully restored.");
   }
   document.getElementById("rest-menu").hidden = true;
-  save(); renderSummary(); renderCharacterTab(); renderActionsDashboard();
+  save(); renderAll();
 });
 
 /* Rolls tab click-to-roll (delegated) */
@@ -1489,16 +1489,16 @@ document.getElementById("status-active").addEventListener("click", e => {
   const chip = e.target.closest("[data-remove-status]");
   if (!chip) return;
   character.statuses.splice(Number(chip.dataset.removeStatus), 1);
-  save(); renderSummary(); renderStatuses();
+  save(); renderAll();
 });
 document.getElementById("status-adder").addEventListener("click", e => {
   if (e.target.id === "status-custom") {
     const v = prompt("Custom status effect:");
-    if (v && v.trim()) { character.statuses.push(v.trim()); save(); renderSummary(); renderStatuses(); }
+    if (v && v.trim()) { character.statuses.push(v.trim()); save(); renderAll(); }
     return;
   }
   const label = e.target.dataset.addStatus;
-  if (label) { character.statuses.push(label); save(); renderSummary(); renderStatuses(); }
+  if (label) { character.statuses.push(label); save(); renderAll(); }
 });
 
 /* Weapons: ammo, edit, delete (delegated) */
@@ -1539,7 +1539,7 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
         if (invId) character.inventory[invId] = (character.inventory[invId] || 0) + 1;
       }
     }
-    save(); renderWeapons(); renderBackpack();
+    save(); renderAll();
     return;
   }
   const silBtn = e.target.closest("[data-toggle-silencer]");
@@ -1554,7 +1554,7 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
       character.inventory.silencer = (character.inventory.silencer || 0) + 1;
       w.silenced = false;
     }
-    save(); renderWeapons(); renderBackpack();
+    save(); renderAll();
     return;
   }
   const editBtn = e.target.closest("[data-edit-weapon]");
@@ -1564,7 +1564,7 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
     const w = character.weapons.find(x => x.id === delBtn.dataset.delWeapon);
     if (w && confirm(`Remove ${w.name || "this weapon"}?`)) {
       character.weapons = character.weapons.filter(x => x.id !== w.id);
-      save(); renderWeapons();
+      save(); renderAll();
     }
   }
 });
@@ -1576,7 +1576,7 @@ document.getElementById("backpack").addEventListener("click", e => {
     const [id, delta] = btn.dataset.inv.split(":");
     const cur = character.inventory[id] || 0;
     character.inventory[id] = Math.max(0, cur + Number(delta));
-    save(); renderBackpack(); renderActionsDashboard();
+    save(); renderAll();
     return;
   }
   const info = e.target.closest("[data-item-info]");
@@ -1588,7 +1588,7 @@ document.getElementById("equip-slots").addEventListener("change", e => {
   const sel = e.target.closest("[data-equip-slot]");
   if (!sel) return;
   character.equip[sel.dataset.equipSlot] = sel.value || null;
-  save(); renderBackpack();
+  save(); renderAll();
 });
 
 /* Crafting (delegated) */
@@ -1601,7 +1601,7 @@ document.getElementById("crafting").addEventListener("click", e => {
   if (!have) return;
   Object.entries(item.craft).forEach(([mid, n]) => { character.inventory[mid] -= n; });
   character.inventory[id] = (character.inventory[id] || 0) + 1;
-  save(); renderBackpack(); renderActionsDashboard();
+  save(); renderAll();
   toast(`Crafted ${item.name}`);
 });
 
@@ -1751,7 +1751,7 @@ function saveWeaponFromModal() {
   } else {
     character.weapons.push(Object.assign({ id: uid(), currentAmmo: data.maxAmmo }, data));
   }
-  save(); closeWeaponModal(); renderWeapons();
+  save(); closeWeaponModal(); renderAll();
 }
 
 document.getElementById("add-weapon-btn").addEventListener("click", () => openWeaponModal(null));
