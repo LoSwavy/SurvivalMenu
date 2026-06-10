@@ -40,11 +40,12 @@
 
 <!-- ===================== TAB NAV ===================== -->
 <nav class="tab-nav" id="tab-nav">
-  <button class="tab-btn active" data-tab="character"><span class="tab-icon">🧍</span><span class="tab-text">Character</span></button>
-  <button class="tab-btn" data-tab="weapons"><span class="tab-icon">🔫</span><span class="tab-text">Weapons</span></button>
-  <button class="tab-btn" data-tab="backpack"><span class="tab-icon">🎒</span><span class="tab-text">Backpack</span></button>
-  <button class="tab-btn" data-tab="skills"><span class="tab-icon">🌿</span><span class="tab-text">Skill Trees</span></button>
-  <button class="tab-btn" data-tab="notes"><span class="tab-icon">📓</span><span class="tab-text">Notes</span></button>
+  <button class="tab-btn active" data-tab="character"><span class="tab-icon"><img class="icon" src="icons/tab-character.svg" alt=""></span><span class="tab-text">Character</span></button>
+  <button class="tab-btn" data-tab="weapons"><span class="tab-icon"><img class="icon" src="icons/tab-weapons.svg" alt=""></span><span class="tab-text">Weapons</span></button>
+  <button class="tab-btn" data-tab="backpack"><span class="tab-icon"><img class="icon" src="icons/tab-backpack.svg" alt=""></span><span class="tab-text">Backpack</span></button>
+  <button class="tab-btn" data-tab="skills"><span class="tab-icon"><img class="icon" src="icons/tab-skills.svg" alt=""></span><span class="tab-text">Skill Trees</span></button>
+  <button class="tab-btn" data-tab="rolls"><span class="tab-icon"><img class="icon" src="icons/tab-rolls.svg" alt=""></span><span class="tab-text">Rolls</span></button>
+  <button class="tab-btn" data-tab="notes"><span class="tab-icon"><img class="icon" src="icons/tab-notes.svg" alt=""></span><span class="tab-text">Notes</span></button>
 </nav>
 
 <main class="content">
@@ -86,6 +87,18 @@
           <button class="hp-btn plus" data-hp="1">+1</button>
           <button class="hp-btn plus" data-hp="5">+5</button>
           <button class="hp-btn full" id="hp-full">FULL</button>
+        </div>
+      </div>
+
+      <!-- Temp HP -->
+      <div class="temp-hp-block">
+        <span class="temp-hp-label">TEMP HP</span>
+        <div class="temp-hp-controls">
+          <button class="hp-btn minus" data-temp="-1">−1</button>
+          <span class="temp-hp-val" id="temp-hp-val">0</span>
+          <button class="hp-btn plus" data-temp="1">+1</button>
+          <button class="hp-btn plus" data-temp="5">+5</button>
+          <button class="hp-btn full" id="temp-hp-clear">CLEAR</button>
         </div>
       </div>
 
@@ -141,10 +154,23 @@
   <!-- ===================== BACKPACK TAB ===================== -->
   <section class="tab-panel" id="tab-backpack">
     <div class="panel-head loose">
+      <h2>Equipped</h2>
+      <span class="panel-hint">Weapon &amp; holster slots</span>
+    </div>
+    <div id="equip-slots" class="equip-slots"></div>
+
+    <div class="panel-head loose">
       <h2>Backpack</h2>
       <span class="panel-hint" id="slot-counter">Slots used: 0</span>
     </div>
+    <div id="general-slots" class="general-slots"></div>
     <div id="backpack" class="backpack"></div>
+
+    <div class="panel-head loose">
+      <h2>Crafting</h2>
+      <span class="panel-hint">Consumes materials from your backpack</span>
+    </div>
+    <div id="crafting" class="crafting-grid"></div>
   </section>
 
   <!-- ===================== SKILL TREES TAB ===================== -->
@@ -155,6 +181,19 @@
       <div class="ap-chip total"><span class="ap-num" id="ap-total">0</span><span class="ap-lbl">AP Total (Lvl)</span></div>
     </div>
     <div id="skill-trees" class="skill-trees"></div>
+  </section>
+
+  <!-- ===================== ROLLS TAB ===================== -->
+  <section class="tab-panel" id="tab-rolls">
+    <div class="panel">
+      <div class="panel-head"><h2>Ability Checks &amp; Saving Throws</h2><span class="panel-hint">Tap a modifier to roll d20 + mod</span></div>
+      <div id="roll-abilities" class="roll-grid"></div>
+      <div id="roll-saves" class="roll-grid"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Skills</h2><span class="panel-hint">Tap a modifier to roll d20 + mod</span></div>
+      <div id="roll-skills" class="roll-grid"></div>
+    </div>
   </section>
 
   <!-- ===================== NOTES TAB ===================== -->
@@ -169,7 +208,7 @@
   <!-- ===================== RULES REFERENCE (always at bottom) ===================== -->
   <div class="panel ref-panel">
     <button class="ref-toggle" id="ref-toggle">
-      <span>📖 Rules Quick-Reference</span>
+      <span><img class="icon" src="icons/tab-notes.svg" alt=""> Rules Quick-Reference</span>
       <span class="ref-arrow">▾</span>
     </button>
     <div id="ref-body" class="ref-body collapsed"></div>
@@ -177,14 +216,23 @@
 
   <!-- Data management -->
   <div class="data-bar">
-    <button class="btn ghost" id="export-btn">⬇ Export Character</button>
-    <button class="btn ghost" id="import-btn">⬆ Import Character</button>
-    <button class="btn danger-ghost" id="reset-btn">↺ New Character</button>
+    <button class="btn ghost" id="export-btn"><img class="icon" src="icons/icon-speed.svg" alt=""> Export Character</button>
+    <button class="btn ghost" id="import-btn"><img class="icon" src="icons/icon-init.svg" alt=""> Import Character</button>
+    <button class="btn danger-ghost" id="reset-btn"><img class="icon" src="icons/icon-resolve.svg" alt=""> New Character</button>
     <input type="file" id="import-file" accept="application/json" hidden />
     <span id="save-indicator" class="save-indicator">Saved</span>
   </div>
 
 </main>
+
+<!-- ===================== ROLL LOG ===================== -->
+<div class="roll-log" id="roll-log"></div>
+
+<!-- ===================== ITEM POPUP ===================== -->
+<div class="item-popup" id="item-popup" hidden>
+  <div class="item-popup-head"><span id="item-popup-title"></span><button class="modal-close" id="item-popup-close">✕</button></div>
+  <div class="item-popup-body" id="item-popup-body"></div>
+</div>
 
 <!-- ===================== WEAPON MODAL ===================== -->
 <div class="modal-overlay" id="weapon-modal" hidden>
