@@ -459,7 +459,7 @@ function defaultCharacter() {
     resolveCurrent: null,   // null = full (synced to max)
     weaponSlots: [null],    // rifle/bow/melee weapon ids (max 3)
     holsters: [null],       // handgun ids (max 2)
-    armor: null,            // { name } or null
+    armor: null,            // { type, acBonus, other } or null
     deathSaves: { success: 0, fail: 0 },
     customItems: [],        // [{id, name, desc, qty}]
   };
@@ -542,6 +542,9 @@ function derive() {
     if (typeof s.stat === "function") s.stat(d, ctx);
     if (s.flags) Object.assign(d.flags, s.flags);
   });
+
+  // Worn armor's AC bonus
+  if (character.armor) d.ac += Number(character.armor.acBonus) || 0;
 
   d.maneuverDC = 8 + pb + Math.max(mods.str, mods.dex);
 
@@ -1033,8 +1036,9 @@ function addPerk() {
   const count = character.perks.filter(p => p.type === type).length;
   if (def.max && count >= def.max) { toast(`${def.label}: max ${def.max} reached.`); return; }
   if (!def.repeatable && !def.max && count >= 1) { toast(`${def.label} already taken.`); return; }
-  // avoid duplicate specific choice
-  if (choice && character.perks.some(p => p.type === type && p.choice === choice)) {
+  // avoid duplicate specific choice (abilityImprovement may be taken twice with the
+  // same ability — each is a separate +1 entry — so skip this check for it)
+  if (type !== "abilityImprovement" && choice && character.perks.some(p => p.type === type && p.choice === choice)) {
     toast(`Already have ${def.label}: ${choice}.`); return;
   }
 
@@ -1194,10 +1198,12 @@ function renderEquipSlots() {
     html += `<button class="add-slot-btn" data-add-slot="holster">${icon("slot-holster")} + Add Holster</button>`;
 
   if (character.armor) {
+    const a = character.armor;
     html += `<div class="equip-slot filled">
       <div class="es-label">${icon("slot-holster")} Armor
         <button class="es-remove" data-remove-armor title="Remove armor">✕</button></div>
-      <div class="es-armor-name">${esc(character.armor.name)}</div>
+      <div class="es-armor-name">${esc(a.type || "Armor")} (AC ${a.acBonus >= 0 ? "+" : ""}${a.acBonus || 0})</div>
+      ${a.other ? `<div class="es-armor-other">${esc(a.other)}</div>` : ""}
     </div>`;
   } else {
     html += `<button class="add-slot-btn" data-add-slot="armor">${icon("slot-holster")} + Add Armor</button>`;
@@ -1702,9 +1708,11 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
   const delBtn = e.target.closest("[data-del-weapon]");
   if (delBtn) {
     const w = character.weapons.find(x => x.id === delBtn.dataset.delWeapon);
-    if (w && confirm(`Remove ${w.name || "this weapon"}?`)) {
-      character.weapons = character.weapons.filter(x => x.id !== w.id);
-      save(); renderAll();
+    if (w) {
+      showConfirmModal(`Remove ${w.name || "this weapon"}?`, () => {
+        character.weapons = character.weapons.filter(x => x.id !== w.id);
+        save(); renderAll();
+      });
     }
   }
 });
@@ -1720,7 +1728,7 @@ document.getElementById("backpack").addEventListener("click", e => {
     return;
   }
   const info = e.target.closest("[data-item-info]");
-  if (info) showItemPopup(info.dataset.itemInfo, info);
+  if (info) showItemPopup(info.dataset.itemInfo);
 });
 
 /* Equip slot selects (delegated) */
@@ -1741,8 +1749,8 @@ document.getElementById("equip-slots").addEventListener("click", e => {
     if (addBtn.dataset.addSlot === "holster" && character.holsters.length < MAX_HOLSTERS) character.holsters.push(null);
     else if (addBtn.dataset.addSlot === "weapon" && character.weaponSlots.length < MAX_WEAPON_SLOTS) character.weaponSlots.push(null);
     else if (addBtn.dataset.addSlot === "armor") {
-      character.armor = { name: "Armor" };
-      character.wearingArmor = true;
+      openArmorModal();
+      return;
     }
     save(); renderAll();
     return;
@@ -1802,35 +1810,89 @@ document.getElementById("custom-items").addEventListener("click", e => {
     return;
   }
   const info = e.target.closest("[data-item-info]");
-  if (info) showItemPopup(info.dataset.itemInfo, info);
+  if (info) showItemPopup(info.dataset.itemInfo);
 });
 
-/* Item info popup */
-function showItemPopup(id, anchor) {
+/* ============================================================
+   GENERIC MODAL SYSTEM
+   ============================================================ */
+function showModal(contentHtml) {
+  const overlay = document.getElementById("modal-overlay");
+  const box = document.getElementById("modal-box");
+  box.innerHTML = contentHtml;
+  overlay.classList.remove("hidden");
+}
+function hideModal() {
+  const overlay = document.getElementById("modal-overlay");
+  overlay.classList.add("hidden");
+  document.getElementById("modal-box").innerHTML = "";
+}
+document.getElementById("modal-overlay").addEventListener("click", e => {
+  if (e.target.id === "modal-overlay") hideModal();
+});
+document.getElementById("modal-overlay").addEventListener("click", e => {
+  if (e.target.closest("[data-modal-close]")) hideModal();
+});
+
+/* Centered Yes/No confirm modal. Calls onConfirm() if the user picks Yes. */
+function showConfirmModal(message, onConfirm) {
+  showModal(`
+    <div class="modal-head"><h3>Confirm</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body"><div class="modal-confirm-msg">${esc(message)}</div></div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-modal-close>No</button>
+      <button class="btn accent" id="modal-confirm-yes">Yes</button>
+    </div>
+  `);
+  document.getElementById("modal-confirm-yes").addEventListener("click", () => {
+    hideModal();
+    onConfirm();
+  });
+}
+
+/* Armor modal: choose Type (Heavy/Light), AC modifier, and an "Other" note. */
+function openArmorModal() {
+  const a = character.armor || { type: "Light", acBonus: 0, other: "" };
+  showModal(`
+    <div class="modal-head"><h3>Armor</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body">
+      <label class="field"><span class="field-label">Type</span>
+        <select id="armor-type">
+          <option value="Heavy" ${a.type === "Heavy" ? "selected" : ""}>Heavy</option>
+          <option value="Light" ${a.type !== "Heavy" ? "selected" : ""}>Light</option>
+        </select>
+      </label>
+      <label class="field"><span class="field-label">AC Modifier</span>
+        <input id="armor-ac" type="number" step="1" value="${Number(a.acBonus) || 0}" />
+      </label>
+      <label class="field"><span class="field-label">Other (notes / description)</span>
+        <textarea id="armor-other" rows="2" placeholder="Anything else to remember…">${esc(a.other || "")}</textarea>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-modal-close>Cancel</button>
+      <button class="btn accent" id="armor-save">Save</button>
+    </div>
+  `);
+  document.getElementById("armor-save").addEventListener("click", () => {
+    const type = document.getElementById("armor-type").value;
+    const acBonus = Number(document.getElementById("armor-ac").value) || 0;
+    const other = document.getElementById("armor-other").value.trim();
+    character.armor = { type, acBonus, other };
+    character.wearingArmor = true;
+    save(); hideModal(); renderAll();
+  });
+}
+
+/* Item info popup (now rendered in the generic modal) */
+function showItemPopup(id) {
   const item = GAME_DATA.invById[id] || character.customItems.find(it => it.id === id);
   if (!item) return;
-  const popup = document.getElementById("item-popup");
-  document.getElementById("item-popup-title").textContent = item.name;
-  document.getElementById("item-popup-body").textContent = item.desc || "No description.";
-  popup.hidden = false;
-  const rect = anchor.getBoundingClientRect();
-  const top = window.scrollY + rect.bottom + 6;
-  let left = window.scrollX + rect.left;
-  const maxLeft = window.scrollX + document.documentElement.clientWidth - 260;
-  if (left > maxLeft) left = Math.max(8, maxLeft);
-  popup.style.top = `${top}px`;
-  popup.style.left = `${left}px`;
+  showModal(`
+    <div class="modal-head"><h3>${esc(item.name)}</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body"><div class="modal-item-body">${esc(item.desc || "No description.")}</div></div>
+  `);
 }
-function hideItemPopup() {
-  document.getElementById("item-popup").hidden = true;
-}
-document.getElementById("item-popup-close").addEventListener("click", hideItemPopup);
-document.addEventListener("click", e => {
-  const popup = document.getElementById("item-popup");
-  if (popup.hidden) return;
-  if (e.target.closest("#item-popup") || e.target.closest("[data-item-info]")) return;
-  hideItemPopup();
-});
 
 /* Skill trees (delegated) */
 document.getElementById("skill-trees").addEventListener("click", e => {
@@ -1968,13 +2030,14 @@ function maybeLoadStartingGear(bgId) {
   if (!bg || !bg.gear) return;
   const invEmpty = Object.values(character.inventory).every(v => !v);
   if (character.weapons.length === 0 && invEmpty) {
-    if (confirm(`Load ${bg.name} starting gear (weapon + supplies)?`)) {
+    showConfirmModal(`Load ${bg.name} starting gear (weapon + supplies)?`, () => {
       character.weapons = (bg.gear.weapons || []).map(w => Object.assign({}, w, { id: uid() }));
       character.inventory = Object.assign({}, bg.gear.inventory || {});
       // sync HP to max for a fresh build
       character.currentHP = derive().maxHp;
+      save(); renderAll();
       toast(`${bg.name} gear loaded`);
-    }
+    });
   }
 }
 
@@ -2014,11 +2077,11 @@ document.getElementById("import-file").addEventListener("change", e => {
   e.target.value = "";
 });
 document.getElementById("reset-btn").addEventListener("click", () => {
-  if (confirm("Start a NEW character? This erases the current one (export first if you want to keep it).")) {
+  showConfirmModal("Start a NEW character? This erases the current one (export first if you want to keep it).", () => {
     character = defaultCharacter();
     save(); renderAll();
     toast("New character created");
-  }
+  });
 });
 
 /* ============================================================
