@@ -1486,11 +1486,7 @@ function renderEquipSlots() {
   const root = document.getElementById("equip-slots");
   let html = "";
   character.weaponSlots.forEach((wid, i) => { html += equipSlotHtml("weapon", i, wid, WEAPON_SLOT_CATS, "slot-weapon", "Weapon Slot"); });
-  if (character.weaponSlots.length < MAX_WEAPON_SLOTS)
-    html += `<button class="add-slot-btn" data-add-slot="weapon">${icon("slot-weapon")} + Add Weapon Slot</button>`;
   character.holsters.forEach((wid, i) => { html += equipSlotHtml("holster", i, wid, HOLSTER_CATS, "slot-holster", "Holster"); });
-  if (character.holsters.length < MAX_HOLSTERS)
-    html += `<button class="add-slot-btn" data-add-slot="holster">${icon("slot-holster")} + Add Holster</button>`;
 
   if (character.armor) {
     const a = character.armor;
@@ -1600,7 +1596,7 @@ function renderBackpack() {
   if (character.customItems.length) {
     const customCards = character.customItems.map(it => `
       <div class="inv-item has-qty" data-item-info="${esc(it.id)}">
-        <span class="inv-icon">${icon("inv-custom")}</span>
+        <span class="inv-icon">${icon("invcustom")}</span>
         <div class="inv-name">${esc(it.name)}</div>
         <div class="inv-qty">${it.qty}</div>
         <div class="inv-controls">
@@ -1631,7 +1627,7 @@ function stackMax(it, stack3) {
 }
 
 function groupIcon(name) {
-  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : name.includes("Custom") ? "inv-custom" : "inv-medkit");
+  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : name.includes("Custom") ? "invcustom" : "inv-medkit");
 }
 
 /* ---- Crafting ---- */
@@ -2135,9 +2131,7 @@ document.getElementById("equip-slots").addEventListener("click", e => {
   const addBtn = e.target.closest("[data-add-slot]");
   if (addBtn) {
     ensureEquipArrays();
-    if (addBtn.dataset.addSlot === "holster" && character.holsters.length < MAX_HOLSTERS) character.holsters.push(null);
-    else if (addBtn.dataset.addSlot === "weapon" && character.weaponSlots.length < MAX_WEAPON_SLOTS) character.weaponSlots.push(null);
-    else if (addBtn.dataset.addSlot === "armor") {
+    if (addBtn.dataset.addSlot === "armor") {
       openArmorModal();
       return;
     }
