@@ -1058,17 +1058,16 @@ let D = derive();  // cached derived snapshot, refreshed in renderAll()
 
 function renderAll() {
   D = derive();
-  renderSummary();
-  renderCharacterTab();
-  renderActionsDashboard();
-  renderPerks();
-  renderProficiencies();
-  renderStatuses();
-  renderWeapons();
-  renderBackpack();
-  renderSkillTrees();
-  renderRollsTab();
-  renderNotes();
+  // Each section is isolated so one failing render can't blank the whole UI.
+  const sections = [
+    renderSummary, renderCharacterTab, renderActionsDashboard, renderPerks,
+    renderProficiencies, renderStatuses, renderWeapons, renderBackpack,
+    renderSkillTrees, renderRollsTab, renderNotes,
+  ];
+  for (const fn of sections) {
+    try { fn(); }
+    catch (err) { console.error(`renderAll: ${fn.name} failed`, err); }
+  }
 }
 
 /* ---- Summary bar ---- */
@@ -1601,7 +1600,7 @@ function renderBackpack() {
   if (character.customItems.length) {
     const customCards = character.customItems.map(it => `
       <div class="inv-item has-qty" data-item-info="${esc(it.id)}">
-        <span class="inv-icon">${icon("inv-medkit")}</span>
+        <span class="inv-icon">${icon("inv-custom")}</span>
         <div class="inv-name">${esc(it.name)}</div>
         <div class="inv-qty">${it.qty}</div>
         <div class="inv-controls">
@@ -1632,7 +1631,7 @@ function stackMax(it, stack3) {
 }
 
 function groupIcon(name) {
-  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : "inv-medkit");
+  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : name.includes("Custom") ? "inv-custom" : "inv-medkit");
 }
 
 /* ---- Crafting ---- */
@@ -1961,7 +1960,7 @@ document.getElementById("custom-roll-input").addEventListener("keydown", e => {
 });
 
 /* Dice notation help modal */
-document.getElementById("dice-help-btn").addEventListener("click", () => {
+document.getElementById("dice-help-btn")?.addEventListener("click", () => {
   showModal(`
     <div class="modal-head"><h3>Dice Notation</h3><button class="modal-close" data-modal-close>✕</button></div>
     <div class="modal-body">
@@ -2182,10 +2181,10 @@ document.getElementById("crafting").addEventListener("click", e => {
 });
 
 /* Custom items: add / qty / delete */
-document.getElementById("add-custom-item-btn").addEventListener("click", () => {
+document.getElementById("add-custom-item-btn")?.addEventListener("click", () => {
   openCustomItemModal();
 });
-document.getElementById("upgrade-backpack-btn").addEventListener("click", () => {
+document.getElementById("upgrade-backpack-btn")?.addEventListener("click", () => {
   openUpgradeBackpackModal();
 });
 document.getElementById("backpack").addEventListener("click", e => {
