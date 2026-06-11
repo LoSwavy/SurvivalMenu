@@ -1007,6 +1007,8 @@ function renderPerks() {
       <select id="perk-type">${opts}</select></label>
     <label class="field" id="perk-choice-wrap"><span class="field-label">Choice</span>
       <select id="perk-choice"></select></label>
+    <label class="field" id="perk-choice2-wrap" style="display:none"><span class="field-label">Point 2</span>
+      <select id="perk-choice2"></select></label>
     <button class="btn accent" id="perk-add-btn">+ Add</button>`;
   updatePerkChoiceField();
   document.getElementById("perk-type").addEventListener("change", updatePerkChoiceField);
@@ -1018,27 +1020,55 @@ function updatePerkChoiceField() {
   const def = GAME_DATA.survivorPerks[type];
   const wrap = document.getElementById("perk-choice-wrap");
   const sel = document.getElementById("perk-choice");
+  const sel2wrap = document.getElementById("perk-choice2-wrap");
+  const sel2 = document.getElementById("perk-choice2");
   if (def && def.needsChoice) {
     wrap.style.display = "";
-    sel.innerHTML = def.choices.map(c => `<option value="${c}">${ABILITY_NAMES[c] || c}</option>`).join("");
+    const opts = def.choices.map(c => `<option value="${c}">${ABILITY_NAMES[c] || c}</option>`).join("");
+    sel.innerHTML = opts;
+    // Ability Improvement grants two +1 picks at once — show a second choice box.
+    if (type === "abilityImprovement") {
+      wrap.querySelector(".field-label").textContent = "Point 1";
+      sel2wrap.style.display = "";
+      sel2.innerHTML = opts;
+    } else {
+      wrap.querySelector(".field-label").textContent = "Choice";
+      sel2wrap.style.display = "none";
+      sel2.innerHTML = "";
+    }
   } else {
     wrap.style.display = "none";
     sel.innerHTML = "";
+    sel2wrap.style.display = "none";
+    sel2.innerHTML = "";
   }
 }
 
 function addPerk() {
   const type = document.getElementById("perk-type").value;
   const def = GAME_DATA.survivorPerks[type];
+
+  // Ability Improvement: two +1 picks added together as two separate entries.
+  if (type === "abilityImprovement") {
+    if (character.perks.some(p => p.type === "abilityImprovement")) {
+      toast("Ability Improvement already taken."); return;
+    }
+    const c1 = document.getElementById("perk-choice").value;
+    const c2 = document.getElementById("perk-choice2").value;
+    character.perks.push({ type, choice: c1 });
+    character.perks.push({ type, choice: c2 });
+    save(); renderAll();
+    toast(`Added Ability Improvement: +1 ${ABILITY_NAMES[c1] || c1}, +1 ${ABILITY_NAMES[c2] || c2}`);
+    return;
+  }
+
   const choice = def.needsChoice ? document.getElementById("perk-choice").value : null;
 
   // enforce limits
   const count = character.perks.filter(p => p.type === type).length;
   if (def.max && count >= def.max) { toast(`${def.label}: max ${def.max} reached.`); return; }
   if (!def.repeatable && !def.max && count >= 1) { toast(`${def.label} already taken.`); return; }
-  // avoid duplicate specific choice (abilityImprovement may be taken twice with the
-  // same ability — each is a separate +1 entry — so skip this check for it)
-  if (type !== "abilityImprovement" && choice && character.perks.some(p => p.type === type && p.choice === choice)) {
+  if (choice && character.perks.some(p => p.type === type && p.choice === choice)) {
     toast(`Already have ${def.label}: ${choice}.`); return;
   }
 
@@ -1787,12 +1817,7 @@ document.getElementById("crafting").addEventListener("click", e => {
 
 /* Custom items: add / qty / delete */
 document.getElementById("add-custom-item-btn").addEventListener("click", () => {
-  const name = prompt("Item name:");
-  if (!name) return;
-  const desc = prompt("Item description (optional):") || "";
-  if (!Array.isArray(character.customItems)) character.customItems = [];
-  character.customItems.push({ id: "custom-" + Date.now() + "-" + Math.floor(Math.random() * 10000), name, desc, qty: 1 });
-  save(); renderAll();
+  openCustomItemModal();
 });
 document.getElementById("custom-items").addEventListener("click", e => {
   const qtyBtn = e.target.closest("[data-custom-qty]");
@@ -1805,13 +1830,47 @@ document.getElementById("custom-items").addEventListener("click", e => {
   }
   const delBtn = e.target.closest("[data-custom-del]");
   if (delBtn) {
-    character.customItems = character.customItems.filter(i => i.id !== delBtn.dataset.customDel);
-    save(); renderAll();
+    const id = delBtn.dataset.customDel;
+    const it = character.customItems.find(i => i.id === id);
+    showConfirmModal(`Remove "${it ? it.name : "this item"}" from your backpack?`, () => {
+      character.customItems = character.customItems.filter(i => i.id !== id);
+      save(); renderAll();
+    });
     return;
   }
   const info = e.target.closest("[data-item-info]");
   if (info) showItemPopup(info.dataset.itemInfo);
 });
+
+/* Custom item modal: simple name + description form */
+function openCustomItemModal() {
+  showModal(`
+    <div class="modal-head"><h3>Add Custom Item</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body">
+      <label class="field"><span class="field-label">Name</span>
+        <input id="custom-item-name" type="text" placeholder="Item name" autofocus />
+      </label>
+      <label class="field"><span class="field-label">Description (optional)</span>
+        <textarea id="custom-item-desc" rows="2" placeholder="What is it?"></textarea>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-modal-close>Cancel</button>
+      <button class="btn accent" id="custom-item-save">Add</button>
+    </div>
+  `);
+  const nameInput = document.getElementById("custom-item-name");
+  const save_ = () => {
+    const name = nameInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+    const desc = document.getElementById("custom-item-desc").value.trim();
+    if (!Array.isArray(character.customItems)) character.customItems = [];
+    character.customItems.push({ id: "custom-" + Date.now() + "-" + Math.floor(Math.random() * 10000), name, desc, qty: 1 });
+    save(); hideModal(); renderAll();
+  };
+  document.getElementById("custom-item-save").addEventListener("click", save_);
+  nameInput.addEventListener("keydown", e => { if (e.key === "Enter") save_(); });
+}
 
 /* ============================================================
    GENERIC MODAL SYSTEM
