@@ -1,966 +1,2635 @@
 /* =========================================================
    THE LAST OF US — SURVIVOR DASHBOARD
-   Weathered survival-game menu aesthetic.
-   Palette: muted greens, browns, grays, off-whites.
+   Pure HTML/CSS/JS. No frameworks, no build, no deps.
+
+   ARCHITECTURE
+   - GAME_DATA  : all rules content (backgrounds, perks, trees,
+                  weapon templates, inventory, keywords). Add to
+                  these objects to expand the game — the UI reads
+                  from them and never hardcodes character data.
+   - character  : the live, saved state (localStorage).
+   - derive()   : computes stats + the "what can I do" dashboard
+                  by walking every active source of effects.
+   - render*()  : paint each tab from state. Called on any change.
    ========================================================= */
 
-:root {
-  --bg-0:        #101208;
-  --bg-1:        #16190f;
-  --bg-2:        #1d2014;
-  --panel:       #23271a;
-  --panel-2:     #2a2e1f;
-  --card:        #2c3122;
-  --card-hi:     #353a28;
-  --line:        #41472f;
-  --line-soft:   #353a26;
+/* ============================================================
+   1. GAME DATA  (expand freely — UI is data-driven)
+   ============================================================ */
 
-  --text:        #e4e0cf;
-  --text-dim:    #a9a690;
-  --text-faint:  #7c7a63;
+const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
+const ABILITY_NAMES = { str: "STR", dex: "DEX", con: "CON", int: "INT", wis: "WIS", cha: "CHA" };
 
-  --green:       #a7bd6e;
-  --green-deep:  #6f8a3f;
-  --green-glow:  rgba(167,189,110,0.16);
-  --olive:       #57602f;
-  --brown:       #9c7b4f;
-  --brown-deep:  #6b5232;
-  --rust:        #b06a3a;
-  --red:         #b8483a;
-  --red-deep:    #7c2e26;
-  --blue-cold:   #6f93a6;
-
-  --radius:      12px;
-  --radius-sm:   8px;
-  --shadow:      0 6px 18px rgba(0,0,0,0.45);
-  --shadow-lg:   0 12px 34px rgba(0,0,0,0.6);
-  --tap:         48px;
-
-  --font: "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif;
+/* Black & white line-art icons (icons/*.svg) */
+function icon(name, cls = "") {
+  return `<img class="icon ${cls}" src="icons/${name}.svg" alt="" />`;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+/* Skill -> governing ability (for the Rolls page) */
+const SKILL_ABILITY = {
+  "Athletics": "str", "Acrobatics": "dex", "Sleight of Hand": "dex", "Stealth": "dex",
+  "Investigation": "int", "Engineering": "int",
+  "Perception": "wis", "Medicine": "wis", "Survival": "wis", "Insight": "wis",
+  "Persuasion": "cha", "Deception": "cha", "Intimidation": "cha",
+};
 
-html, body { overflow-x: hidden; }
+/* Dashboard categories */
+const CAT = { ACTION: "action", BONUS: "bonus", REACT: "reaction", PASSIVE: "passive" };
 
-body {
-  font-family: var(--font);
-  color: var(--text);
-  background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(112,138,63,0.10), transparent 60%),
-    radial-gradient(900px 500px at 0% 100%, rgba(156,123,79,0.08), transparent 55%),
-    linear-gradient(160deg, var(--bg-1), var(--bg-0));
-  background-attachment: fixed;
-  min-height: 100vh;
-  padding-bottom: 90px;
-  -webkit-text-size-adjust: 100%;
-  letter-spacing: 0.2px;
-}
+/* --- Backgrounds ---------------------------------------------------------
+   Each: icon, tag, fixed survivor perks (proficiencies), a unique
+   background perk (with dashboard + stat effects + weapon effects),
+   and starting gear (weapons + inventory).                                  */
+const GAME_DATA = {};
 
-/* subtle grain/scratch overlay */
-body::before {
-  content: "";
-  position: fixed; inset: 0;
-  pointer-events: none;
-  opacity: 0.05;
-  background-image:
-    repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 3px);
-  z-index: 1;
-}
+/* --- Weapon templates (defined first: background gear references them) ---- */
+GAME_DATA.weaponTemplates = {
+  "": { name: "", category: "rifle" },
+  "Bolt-Action Rifle": { name: "Bolt-Action Rifle", category: "rifle", damage: "2d8 + DEX", range: "300 ft", ammoType: "Rifle Ammo", maxAmmo: 6, sound: "Very Loud" },
+  "Hunting Rifle":      { name: "Hunting Rifle", category: "rifle", damage: "2d8 + DEX", range: "250 ft", ammoType: "Rifle Ammo", maxAmmo: 5, sound: "Very Loud" },
+  "Shotgun":            { name: "Shotgun", category: "shotgun", damage: "2d6", ammoType: "Shotgun Shells", maxAmmo: 2, range: "Short", sound: "Very Loud" },
+  "9mm Pistol":         { name: "9mm Pistol", category: "handgun", damage: "2d6 + DEX", range: "60 ft", ammoType: "Handgun Ammo", maxAmmo: 12, sound: "Very Loud" },
+  "Snubnose Revolver":  { name: "Snubnose Revolver", category: "handgun", damage: "2d6 + DEX", range: "40 ft", ammoType: "Handgun Ammo", maxAmmo: 6, sound: "Very Loud" },
+  "Hunting Bow":        { name: "Hunting Bow", category: "bow", damage: "1d8 + DEX", range: "120 ft", ammoType: "Arrows", maxAmmo: 8, sound: "Quiet" },
+  "Metal Pipe":         { name: "Metal Pipe", category: "blunt", damage: "1d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
+  "Baseball Bat":       { name: "Baseball Bat", category: "blunt", damage: "1d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
+  "Machete":            { name: "Machete", category: "melee", damage: "1d8 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
+  "Improvised Weapon":  { name: "Improvised Weapon", category: "improvised", damage: "1d4 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
+  "Upgraded Improvised":{ name: "Upgraded Improvised Weapon", category: "improvised", damage: "1d10 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Loud", upgrades: ["Upgraded (breaks on 1)"] },
+};
+const WEAPON_TYPE_LABEL = { rifle: "Rifle", shotgun: "Shotgun", handgun: "Handgun", bow: "Bow", blunt: "Blunt Melee", improvised: "Improvised Melee", melee: "Melee" };
 
-h1,h2,h3 {
-  font-weight: 700;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-}
+GAME_DATA.backgrounds = {
+  brawler: {
+    id: "brawler", name: "Brawler", icon: "🔨", flavor: "armored in muscle",
+    perks: [
+      { type: "weapon", choice: "Blunt Melee" },
+      { type: "skill", choice: "Athletics" },
+    ],
+    backgroundPerk: {
+      name: "Thick-Skinned",
+      dash: [{ cat: CAT.PASSIVE, name: "Thick-Skinned", desc: "While unarmored, add your CON modifier to AC. Stacks with other unarmored AC bonuses." }],
+      stat: (d, c) => { if (!c.character.wearingArmor) d.ac += c.mods.con; },
+    },
+    gear: {
+      weapons: [tmplWeapon("Metal Pipe", "blunt")],
+      inventory: { binding: 2 },
+    },
+  },
+  sharpshooter: {
+    id: "sharpshooter", name: "Sharpshooter", icon: "🎯", flavor: "one shot, one kill",
+    perks: [
+      { type: "weapon", choice: "Rifles" },
+      { type: "skill", choice: "Perception" },
+    ],
+    backgroundPerk: {
+      name: "Deadshot",
+      dash: [{ cat: CAT.PASSIVE, name: "Deadshot (Aimed Shot: Rifles)", desc: "Before a rifle attack you may take −5 to hit for +10 damage (rifles only)." }],
+      weapon: { match: (w) => w.category === "rifle", name: "Aimed Shot", desc: "−5 to hit, +10 damage (once per attack)." },
+    },
+    gear: {
+      weapons: [tmplWeapon("Bolt-Action Rifle", "rifle", { upgrades: ["Scope Attachment"] })],
+      inventory: { longGunAmmo: 6 },
+    },
+  },
+  medic: {
+    id: "medic", name: "Medic", icon: "🩹", flavor: "keeps the group breathing",
+    perks: [
+      { type: "weapon", choice: "Handguns" },
+      { type: "skill", choice: "Medicine" },
+    ],
+    backgroundPerk: {
+      name: "Combat Healer",
+      dash: [{ cat: CAT.BONUS, name: "Combat Heal", desc: "Use healing items as a bonus action. If you instead spend your action, the item heals its maximum amount." }],
+      flags: { healAsBonus: true },
+    },
+    gear: {
+      weapons: [tmplWeapon("9mm Pistol", "handgun")],
+      inventory: { bandage: 2, alcohol: 1 },
+    },
+  },
+  smuggler: {
+    id: "smuggler", name: "Smuggler", icon: "📦", flavor: "gets the goods, gets around",
+    perks: [
+      { type: "weapon", choice: "Handguns" },
+      { type: "skill", choice: "Investigation" },
+    ],
+    backgroundPerk: {
+      name: "Smuggler's Routes",
+      dash: [{ cat: CAT.PASSIVE, name: "Smuggler's Routes", desc: "Ignore difficult terrain; +10 ft speed; climbing & swimming speed equal to your walking speed." }],
+      stat: (d) => { d.speed += 10; },
+    },
+    gear: {
+      weapons: [tmplWeapon("Snubnose Revolver", "handgun", { currentAmmo: 4, maxAmmo: 6 })],
+      inventory: { scrap: 2, binding: 1 },
+    },
+  },
+  hunter: {
+    id: "hunter", name: "Hunter", icon: "🐺", flavor: "stalks, hides, strikes unseen",
+    perks: [
+      { type: "weapon", choice: "Bows" },
+      { type: "skill", choice: "Stealth" },
+    ],
+    backgroundPerk: {
+      name: "Stalker",
+      dash: [{ cat: CAT.PASSIVE, name: "Stalker", desc: "Advantage on Initiative rolls. Creatures have Disadvantage on Stealth checks to hide from you." }],
+      flags: { initAdvantage: true },
+    },
+    gear: {
+      weapons: [tmplWeapon("Hunting Bow", "bow")],
+      inventory: { arrows: 8, shiv: 1 },
+    },
+  },
+};
 
-button, input, select, textarea { font-family: inherit; color: inherit; }
+/* --- Survivor Perk menu --------------------------------------------------
+   Player-chosen perks (background grants 2 fixed automatically).            */
+GAME_DATA.survivorPerks = {
+  weapon: {
+    type: "weapon", label: "Weapon Training", repeatable: true,
+    needsChoice: true, choices: ["Blunt Melee", "Improvised", "Handguns", "Rifles", "Bows", "Shotguns"],
+    effect: (ch) => `Add Proficiency Bonus to ${ch} attack rolls.`,
+  },
+  skill: {
+    type: "skill", label: "Cross-Training", repeatable: true,
+    needsChoice: true,
+    choices: ["Athletics", "Acrobatics", "Stealth", "Sleight of Hand", "Investigation", "Perception", "Medicine", "Engineering", "Survival", "Persuasion", "Deception", "Intimidation", "Insight"],
+    effect: (ch) => `Add Proficiency Bonus to ${ch} checks.`,
+  },
+  lightfeet: {
+    type: "lightfeet", label: "Light Feet", repeatable: true, max: 2,
+    effect: () => "+5 ft speed.",
+    dash: [{ cat: CAT.PASSIVE, name: "Light Feet", desc: "+5 ft movement speed." }],
+    stat: (d) => { d.speed += 5; },
+  },
+  acclimated: {
+    type: "acclimated", label: "Acclimated", repeatable: true, max: 2,
+    needsChoice: true, choices: ["Cold", "Heat", "Gas", "Spores", "Other Hazard"],
+    effect: (ch) => `Advantage on saves vs ${ch}.`,
+  },
+  steel: {
+    type: "steel", label: "Steel Nerves", max: 1,
+    needsChoice: true, choices: ["STR Saves", "DEX Saves", "CON Saves", "INT Saves", "WIS Saves", "CHA Saves"],
+    effect: (ch) => `Add Proficiency Bonus to ${ch.replace(" Saves", "")} saving throws.`,
+  },
+  abilityImprovement: {
+    type: "abilityImprovement", label: "Ability Improvement", repeatable: true, max: 2,
+    needsChoice: true, choices: ["STR", "DEX", "CON", "INT", "WIS", "CHA"],
+    effect: (ch) => `+1 ${ABILITY_NAMES[ch] || ch.toUpperCase()}.`,
+  },
+};
 
-::selection { background: var(--green-deep); color: #11140a; }
+/* --- Skill Trees ---------------------------------------------------------
+   13 trees, grouped. Each tier: name, cost, desc, optional dashboard
+   entries, optional stat fn, optional weapon effect.                        */
+const T1 = 1, T2 = 3, T3 = 5;
 
-/* ====================== SUMMARY BAR ====================== */
-.summary-bar {
-  position: sticky; top: 0; z-index: 20;
-  background: linear-gradient(180deg, rgba(24,28,16,0.98), rgba(20,23,13,0.96));
-  border-bottom: 1px solid var(--line);
-  backdrop-filter: blur(6px);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-}
-.summary-inner {
-  max-width: 1180px; margin: 0 auto;
-  padding: 10px 16px;
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) 2.2fr;
-  gap: 12px 20px;
-  align-items: center;
-}
-.summary-identity { min-width: 0; }
-.summary-name-input {
-  background: transparent; border: none;
-  font-size: 1.35rem; font-weight: 800; letter-spacing: 0.5px;
-  color: var(--text); width: 100%;
-  text-transform: uppercase;
-  border-bottom: 1px dashed transparent;
-}
-.summary-name-input:focus { outline: none; border-bottom-color: var(--green-deep); }
-.summary-sub { color: var(--text-dim); font-size: 0.82rem; margin-top: 2px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-.summary-bg { color: var(--green); font-weight: 600; }
-.dot { color: var(--text-faint); }
+GAME_DATA.skillTrees = {
+  // ===== COMBAT =====
+  cqc: {
+    id: "cqc", category: "Combat", name: "Close-Quarters Control", flavor: "grapples, pressure, finishing chains",
+    tiers: [
+      { name: "Iron Fist", cost: T1, desc: "Fists & blunt melee are +1 weapons. Once per turn, after a melee attack, Grapple a creature in reach as a bonus action (contested Athletics).",
+        dash: [{ cat: CAT.BONUS, name: "Grapple", desc: "After a melee attack, grapple a creature in reach (contested Athletics)." }],
+        weapon: { match: (w) => w.category === "blunt", name: "Iron Fist (+1)", desc: "Counts as a +1 weapon." } },
+      { name: "Break Them Down", cost: T2, desc: "Once per turn on a melee hit: push 5 ft; or target makes a STR save vs your Maneuver DC — on a fail, Disadvantage on its next attack or drops a held item.",
+        dash: [{ cat: CAT.PASSIVE, name: "Break Them Down", desc: "On a melee hit (1/turn): push 5 ft, or force STR save vs your Maneuver DC to debuff/disarm." }] },
+      { name: "Chain Fighter", cost: T3, desc: "Fists & blunt melee become +2 weapons. When you drop a creature to 0 HP, move up to 10 ft and make one free melee attack.",
+        dash: [{ cat: CAT.PASSIVE, name: "Chain Fighter", desc: "On a melee kill: move 10 ft and make one free melee attack." }],
+        weapon: { match: (w) => w.category === "blunt", name: "Chain Fighter (+2)", desc: "Counts as a +2 weapon (overrides Iron Fist)." } },
+    ],
+  },
+  handgun: {
+    id: "handgun", category: "Combat", name: "Handgun Specialist", flavor: "quickdraw, precision sidearm",
+    tiers: [
+      { name: "Precision Shooter", cost: T1, desc: "+2 to attack rolls with handguns. Ignore Disadvantage from long range with handguns.",
+        weapon: { match: (w) => w.category === "handgun", name: "Precision Shooter", desc: "+2 to attack rolls; ignore long-range Disadvantage." } },
+      { name: "Tactical Reload", cost: T2, desc: "Reload a handgun as part of your Attack. You gain Aimed Shot with handguns.",
+        weapon: { match: (w) => w.category === "handgun", name: "Tactical Reload + Aimed Shot", desc: "Reload as part of Attack. Aimed Shot: −5 to hit, +10 damage." } },
+      { name: "Double Tap", cost: T3, desc: "When you Attack with a handgun, you may fire twice. Both shots hit the same target unless the first drops it to 0 HP. Each shot spends ammo.",
+        dash: [{ cat: CAT.ACTION, name: "Double Tap", desc: "Attack with a handgun to fire twice (each shot spends ammo)." }],
+        weapon: { match: (w) => w.category === "handgun", name: "Double Tap", desc: "Fire twice when you take the Attack action (each shot spends ammo)." } },
+    ],
+  },
+  marksman: {
+    id: "marksman", category: "Combat", name: "Precision Marksman", flavor: "long-range control & punishment",
+    tiers: [
+      { name: "Marksman's Focus", cost: T1, desc: "Long guns are +1 weapons. If you make no movement on your turn, gain Advantage on your next long-gun attack.",
+        weapon: { match: (w) => w.category === "rifle", name: "Marksman's Focus (+1)", desc: "+1 weapon. Advantage on your next shot if you didn't move this turn." } },
+      { name: "Suppressive Fire", cost: T2, desc: "Instead of attacking, spend a shot to Suppress a target you can see (WIS save vs your Maneuver DC). If it moves, react to shoot it with Advantage (crit 18–20).",
+        dash: [{ cat: CAT.ACTION, name: "Suppressive Fire", desc: "Spend a shot to Suppress a visible target (WIS save vs Maneuver DC). Moving triggers a reaction shot with Advantage." }] },
+      { name: "Zeroed In", cost: T3, desc: "Your long guns ignore half and three-quarters cover. A Suppressed target you hit takes +10 damage.",
+        weapon: { match: (w) => w.category === "rifle", name: "Zeroed In", desc: "Ignores half/¾ cover. +10 damage vs Suppressed targets." } },
+    ],
+  },
+  improvised: {
+    id: "improvised", category: "Combat", name: "Brawler / Improvised", flavor: "scrappy, resourceful melee",
+    tiers: [
+      { name: "Scrap Brawler", cost: T1, desc: "Fists & improvised weapons deal 1d6. Your improvised weapons break only on a 1 (Durability Check).",
+        weapon: { match: (w) => w.category === "improvised", name: "Scrap Brawler", desc: "Deals 1d6; breaks only on a 1." } },
+      { name: "Adrenaline Surge", cost: T2, desc: "When you drop a creature to 0 HP with fists or an improvised weapon, gain 5 temp HP (doesn't stack with itself).",
+        dash: [{ cat: CAT.PASSIVE, name: "Adrenaline Surge", desc: "Gain 5 temp HP when you kill with fists/improvised weapons." }] },
+      { name: "Brutal Finisher", cost: T3, desc: "Once per turn, perform a Finisher on a Fodder creature at or below 25% HP as a free action.",
+        dash: [{ cat: CAT.ACTION, name: "Brutal Finisher (free)", desc: "1/turn free action: Finisher on a Fodder creature at ≤25% HP." }] },
+    ],
+  },
+  infiltrator: {
+    id: "infiltrator", category: "Combat", name: "Silent Infiltrator", flavor: "stealth lethality",
+    tiers: [
+      { name: "Ambusher", cost: T1, desc: "Attacks vs Unaware creatures deal +1d6. If Hidden when combat begins, +5 Initiative.",
+        dash: [{ cat: CAT.PASSIVE, name: "Ambusher", desc: "+1d6 vs Unaware creatures. +5 Initiative if Hidden when combat starts." }] },
+      { name: "Ghost Step", cost: T2, desc: "Ambusher die becomes +2d6. When you hit while Hidden, Dash or Disengage as a bonus action.",
+        dash: [{ cat: CAT.BONUS, name: "Ghost Step", desc: "After a hit while Hidden, Dash or Disengage as a bonus action (Ambusher becomes +2d6)." }] },
+      { name: "Predator's Kill", cost: T3, desc: "Once per encounter, your attack from Hidden is a guaranteed critical hit. If it kills, the use isn't spent.",
+        dash: [{ cat: CAT.ACTION, name: "Predator's Kill", desc: "1/encounter: guaranteed crit from Hidden. Refunds itself on a kill." }] },
+    ],
+  },
+  defensive: {
+    id: "defensive", category: "Combat", name: "Defensive Combatant", flavor: "block, brace, counter",
+    tiers: [
+      { name: "Bob and Weave", cost: T1, desc: "With a melee weapon or fists, +2 AC. If you make no movement on your turn, you're automatically Braced.",
+        dash: [{ cat: CAT.PASSIVE, name: "Bob and Weave", desc: "+2 AC with a melee weapon/fists. No movement = automatically Braced (can't be shoved/knocked prone)." }],
+        stat: (d) => { d.ac += 2; } },
+      { name: "Reactive Guard", cost: T2, desc: "While Braced, when a creature misses you with a melee attack, react to make a melee attack (Riposte) or shove it 5 ft.",
+        dash: [{ cat: CAT.REACT, name: "Reactive Guard", desc: "While Braced, when a melee attack misses you: Riposte or shove 5 ft." }] },
+      { name: "Parry and Counter", cost: T3, desc: "Once per turn, when hit by a melee attack, reduce the damage by 1d8. If reduced to 0, make a free melee attack against the attacker.",
+        dash: [{ cat: CAT.REACT, name: "Parry and Counter", desc: "1/turn: reduce a melee hit by 1d8. If reduced to 0, free melee attack back." }] },
+    ],
+  },
+  // ===== CRAFTING =====
+  fieldcraft: {
+    id: "fieldcraft", category: "Crafting", name: "Field Craftsman", flavor: "craft mid-fight",
+    tiers: [
+      { name: "Fast Hands", cost: T1, desc: "Craft basic items as a bonus action.",
+        dash: [{ cat: CAT.BONUS, name: "Craft Item (Fast Hands)", desc: "Craft a basic item as a bonus action." }],
+        flags: { craftAsBonus: true } },
+      { name: "On the Fly", cost: T2, desc: "Craft even with enemies within 10 ft, and craft up to two basic items in a single craft.",
+        dash: [{ cat: CAT.PASSIVE, name: "On the Fly", desc: "Craft within 10 ft of enemies without provoking; craft two basic items at once." }] },
+      { name: "Seamless Use", cost: T3, desc: "When you craft with your action, immediately use one crafted item as part of that same action (frees your bonus action).",
+        dash: [{ cat: CAT.PASSIVE, name: "Seamless Use", desc: "Crafting with your action lets you use one crafted item for free as part of it." }] },
+    ],
+  },
+  resource: {
+    id: "resource", category: "Crafting", name: "Resource Efficiency", flavor: "stretch materials",
+    tiers: [
+      { name: "Spread Thin", cost: T1, desc: "When you craft, roll a d6; on a 6, don't consume one ingredient.",
+        dash: [{ cat: CAT.PASSIVE, name: "Spread Thin", desc: "On a craft, roll d6: on a 6, save one ingredient." }] },
+      { name: "Efficient Workflow", cost: T2, desc: "Spread Thin now triggers on 4–6. Crafted items stack one higher (max 3).",
+        dash: [{ cat: CAT.PASSIVE, name: "Efficient Workflow", desc: "Spread Thin triggers on 4–6. Crafted items stack to 3." }],
+        flags: { craftedStack3: true } },
+      { name: "High Yield", cost: T3, desc: "When you craft, roll a d6: on 4–6 save an ingredient; on a 6, also craft double.",
+        dash: [{ cat: CAT.PASSIVE, name: "High Yield", desc: "On a craft, roll d6: 4–6 saves an ingredient; a 6 also doubles the craft." }] },
+    ],
+  },
+  mastercraft: {
+    id: "mastercraft", category: "Crafting", name: "Master Craftsman", flavor: "quality over quantity",
+    tiers: [
+      { name: "Refined Skill", cost: T1, desc: "Items you craft gain +1 effectiveness: crafted weapons +1 to hit or +1 save DC; crafted bandages heal +1.",
+        dash: [{ cat: CAT.PASSIVE, name: "Refined Skill", desc: "Crafted items +1 effectiveness (to hit / save DC / bandage healing)." }] },
+      { name: "Hardened Goods", cost: T2, desc: "Items you craft during a rest are Hardened (+2 to hit/DC; bandages heal +2; resists breaking once).",
+        dash: [{ cat: CAT.PASSIVE, name: "Hardened Goods", desc: "Items crafted during a rest are Hardened (+2; resist breaking once)." }] },
+      { name: "Masterwork Tools", cost: T3, desc: "During a rest, a number of items equal to your PB are Masterwork (+3; resists breaking twice).",
+        dash: [{ cat: CAT.PASSIVE, name: "Masterwork Tools", desc: "During a rest, PB items become Masterwork (+3; resist breaking twice)." }] },
+    ],
+  },
+  // ===== SURVIVAL =====
+  predator: {
+    id: "predator", category: "Survival", name: "Predator Instincts", flavor: "track, focus, execute",
+    tiers: [
+      { name: "Tracker's Mark", cost: T1, desc: "As a bonus action, Mark a creature you can see for 1 hour: +2 to attack rolls vs it, +1d4 damage once per turn, Advantage to track it.",
+        dash: [{ cat: CAT.BONUS, name: "Tracker's Mark", desc: "Mark a visible creature: +2 to hit it, +1d4 damage (1/turn), Advantage to track." }],
+        weapon: { match: () => true, name: "Tracker's Mark", desc: "+2 to hit & +1d4 dmg vs your Marked target (1/turn)." } },
+      { name: "Deadeye Focus", cost: T2, desc: "Mark damage becomes +1d6. Your Marked target gains no benefit from half/¾ cover; you auto-succeed tracking checks against it.",
+        dash: [{ cat: CAT.PASSIVE, name: "Deadeye Focus", desc: "Mark damage becomes +1d6. Marked target ignores cover; auto-succeed tracking." }] },
+      { name: "Execution", cost: T3, desc: "When your Marked target drops below 25% HP, react to perform a Finisher on it. On a kill, move your Mark to a creature within 30 ft.",
+        dash: [{ cat: CAT.REACT, name: "Execution", desc: "When your Marked target falls below 25% HP, react to Finisher it. Kill moves the Mark 30 ft." }] },
+    ],
+  },
+  silentmove: {
+    id: "silentmove", category: "Survival", name: "Silent Movement", flavor: "crouch mobility, stealth escape",
+    tiers: [
+      { name: "Fluid Movement", cost: T1, desc: "No speed penalty while crouched. If you Dash into cover, you may Hide as part of that action.",
+        dash: [{ cat: CAT.PASSIVE, name: "Fluid Movement", desc: "No crouch speed penalty. Dash into cover lets you Hide as part of the action." }] },
+      { name: "Soft Steps", cost: T2, desc: "Creatures have Disadvantage to detect you. Your movement sound drops one level (e.g. Medium → Quiet).",
+        dash: [{ cat: CAT.PASSIVE, name: "Soft Steps", desc: "Creatures roll Disadvantage to detect you. Movement sound drops one level." }] },
+      { name: "Last Chance Kill", cost: T3, desc: "When a creature spots you, react to move up to 10 ft and make a melee or ranged attack. A kill with no other witnesses raises no alarm.",
+        dash: [{ cat: CAT.REACT, name: "Last Chance Kill", desc: "When spotted, react to move 10 ft and attack. A clean kill raises no alarm." }] },
+    ],
+  },
+  scavenger: {
+    id: "scavenger", category: "Survival", name: "Scavenger", flavor: "consistent finds",
+    tiers: [
+      { name: "Keen Eye", cost: T1, desc: "Advantage on Investigation to search areas/bodies. Reroll one failed loot check per rest.",
+        dash: [{ cat: CAT.PASSIVE, name: "Keen Eye", desc: "Advantage on Investigation to search. Reroll one failed loot check per rest." }] },
+      { name: "Opportunist", cost: T2, desc: "When you succeed on a loot check, roll once more on the item table for a bonus item.",
+        dash: [{ cat: CAT.PASSIVE, name: "Opportunist", desc: "A successful loot check grants one extra roll on the item table." }] },
+      { name: "Scrap Magnet", cost: T3, desc: "When you find basic materials, roll a d4; on 2–4, gain +1 of that item. Once per loot check.",
+        dash: [{ cat: CAT.PASSIVE, name: "Scrap Magnet", desc: "Finding basic materials: roll d4, on 2–4 gain +1 (once per loot check)." }] },
+    ],
+  },
+  endure: {
+    id: "endure", category: "Survival", name: "Endure the World", flavor: "durability, resilience",
+    tiers: [
+      { name: "Hardened Survivor", cost: T1, desc: "Gain 5 + CON max HP. Advantage on saves vs environmental effects (cold, gas, heat, etc.).",
+        dash: [{ cat: CAT.PASSIVE, name: "Hardened Survivor", desc: "+ (5 + CON) max HP. Advantage on saves vs environmental hazards." }],
+        stat: (d, c) => { d.maxHp += 5 + c.mods.con; } },
+      { name: "Grit", cost: T2, desc: "Once per short rest, when you'd be reduced to 0 HP, drop to 1 HP instead. Immune to Frightened.",
+        dash: [{ cat: CAT.REACT, name: "Grit", desc: "1/short rest: drop to 1 HP instead of 0. Immune to Frightened." }] },
+      { name: "Survivor's Resolve", cost: T3, desc: "Gain another 5 + CON max HP. Take half damage on failed saves and none on successful ones.",
+        dash: [{ cat: CAT.PASSIVE, name: "Survivor's Resolve", desc: "+ (5 + CON) max HP. Half damage on failed saves, none on success." }],
+        stat: (d, c) => { d.maxHp += 5 + c.mods.con; } },
+    ],
+  },
+};
 
-.summary-stats {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 6px;
-}
-.stat-pill {
-  background: var(--card);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
-  padding: 5px 4px 4px;
-  text-align: center;
-  min-width: 0;
-}
-.stat-pill .sp-val { display:block; font-size: 1.02rem; font-weight: 800; color: var(--text); line-height:1.1; }
-.stat-pill .sp-lbl { display:block; font-size: 0.56rem; letter-spacing: 0.6px; color: var(--text-faint); text-transform: uppercase; margin-top:1px; }
-.stat-pill.hp .sp-val { color: var(--green); }
-.stat-pill.ap .sp-val { color: var(--rust); }
+/* --- Inventory definitions ----------------------------------------------- */
+GAME_DATA.inventory = [
+  { group: "Crafting Materials", items: [
+    { id: "rag", name: "Rag", icon: "inv-rag", desc: "A scrap of cloth. Used to craft bandages, molotovs and silencers." },
+    { id: "scrap", name: "Scrap", icon: "inv-scrap", desc: "Bits of metal and parts. Used to craft shivs and upgraded improvised weapons." },
+    { id: "alcohol", name: "Alcohol", icon: "inv-alcohol", desc: "High-proof liquid. Used to craft bandages and molotovs." },
+    { id: "binding", name: "Binding", icon: "inv-binding", desc: "Tape, cord or wire. Used to craft shivs and upgraded improvised weapons." },
+    { id: "bottle", name: "Bottle", icon: "inv-bottle", desc: "An empty glass bottle. Used to craft silencers." },
+  ]},
+  { group: "Ammunition", items: [
+    { id: "handgunAmmo", name: "Handgun Ammo", icon: "inv-handgunAmmo", desc: "Ammunition for handguns." },
+    { id: "longGunAmmo", name: "Rifle Ammo", icon: "inv-longGunAmmo", desc: "Ammunition for rifles." },
+    { id: "shotgunAmmo", name: "Shotgun Shells", icon: "invshotgunAmmo", desc: "Ammunition for shotguns." },
+    { id: "arrows", name: "Arrows", icon: "inv-arrows", desc: "Ammunition for bows. Can sometimes be retrieved after combat." },
+  ]},
+  { group: "Crafted Items", items: [
+    { id: "bandage", name: "Bandage", icon: "inv-bandage", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Heals 1d4 + CON when used. Crafting consumes 1 Rag + 1 Alcohol." },
+    { id: "molotov", name: "Molotov", icon: "inv-molotov", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Thrown weapon: 1d10 fire damage; DC 15 DEX save vs catching fire. Crafting consumes 1 Rag + 1 Alcohol." },
+    { id: "shiv", name: "Shiv", icon: "inv-shiv", recipe: "Scrap + Binding", craft: { scrap: 1, binding: 1 }, desc: "Instant kill vs an Unaware creature with max HP ≤ 30. Crafting consumes 1 Scrap + 1 Binding." },
+    { id: "silencer", name: "Silencer", icon: "inv-silencer", recipe: "Rag + Bottle", craft: { rag: 1, bottle: 1 }, desc: "Attach to a firearm to make it Quiet, regardless of its normal sound level. Crafting consumes 1 Rag + 1 Bottle." },
+    { id: "upgradedWeapon", name: "Upgraded Improv. Weapon", icon: "inv-upgradedWeapon", recipe: "2× Scrap + Binding", craft: { scrap: 2, binding: 1 }, desc: "An improvised weapon reinforced to deal 1d10 damage and only break on a roll of 1. Crafting consumes 2 Scrap + 1 Binding, as well as an improvised weapon" },
+    { id: "medkit", name: "Medkit", icon: "inv-medkit", recipe: "Found only", desc: "Heals 2d6 + CON when used. Cannot be crafted — found only." },
+  ]},
+];
+/* flat lookup */
+GAME_DATA.invById = {};
+GAME_DATA.inventory.forEach(g => g.items.forEach(i => { GAME_DATA.invById[i.id] = i; }));
 
-.summary-meta {
-  grid-column: 1 / -1;
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px;
-}
-.meta-block { min-width:0; }
-.meta-label { font-size: 0.6rem; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-faint); display:block; margin-bottom:3px; }
+/* --- Status effect presets ----------------------------------------------- */
+GAME_DATA.statusPresets = [
+  { label: "Open", cls: "green" },
+  { label: "Bleeding", cls: "danger" },
+  { label: "Braced", cls: "green" },
+  { label: "Hidden", cls: "green" },
+  { label: "Marked Target", cls: "warn" },
+  { label: "Suppressed", cls: "warn" },
+  { label: "Prone", cls: "danger" },
+  { label: "Grappled", cls: "warn" },
+  { label: "Infected — Stage 1", cls: "danger" },
+  { label: "Infected — Stage 2", cls: "danger" },
+  { label: "Infected — Stage 3", cls: "danger" },
+  { label: "Exhausted", cls: "warn" },
+  { label: "Temp HP", cls: "green" },
+];
 
-.chip-row { display:flex; flex-wrap:wrap; gap:5px; }
-.chip {
-  font-size: 0.7rem; padding: 3px 9px; border-radius: 20px;
-  background: var(--card-hi); border: 1px solid var(--line);
-  color: var(--text-dim); white-space: nowrap;
-}
-.chip.green { color: var(--green); border-color: var(--green-deep); background: var(--green-glow); }
-.chip.warn { color: #e3b56a; border-color: #6b5232; background: rgba(176,106,58,0.12); }
-.chip.danger { color: #e08b7e; border-color: var(--red-deep); background: rgba(184,72,58,0.12); }
-.chip.empty { color: var(--text-faint); font-style: italic; border-style: dashed; }
-.chip-row.big .chip { font-size: 0.8rem; padding: 6px 12px; cursor: pointer; }
-.chip-row.big .chip .x { margin-left: 6px; opacity: 0.6; }
-.chip-row.big .chip:hover .x { opacity: 1; color: var(--red); }
+/* --- Rules quick-reference keywords -------------------------------------- */
+GAME_DATA.keywords = [
+  { term: "Hidden", def: "Unseen after a successful Stealth check behind cover/concealment. You stop being Hidden when you attack or are seen." },
+  { term: "Open", def: "Prone, stunned, downed, begging, knocked down, or concussed — a valid Finisher target." },
+  { term: "Unaware", def: "A creature that hasn't noticed you. If a creature notices you, they will become Unaware if you stay hidden from them for a full round of combat." },
+  { term: "Marked", def: "Tagged by Predator Instincts. +2 to hit it and bonus damage once per turn. One Mark at a time." },
+  { term: "Suppressed", def: "Pinned by Precision Marksman — moving triggers a reaction shot. Ends when it moves or you make another attack that isnt also Supressive Fire. Infected are immune to this condition. " },
+  { term: "Braced", def: "Made no movement this turn (needs Bob and Weave): can't be shoved/knocked prone/knocked down; can use Reactive Guard." },
+  { term: "Finisher", def: "Instant kill (no roll) on a Fodder creature that is Open or Unaware and within range. Apex enemies are immune." },
+  { term: "Aimed Shot", def: "Before a ranged attack, take −5 to hit for +10 damage. Once per attack, regardless of how many features grant it." },
+  { term: "Maneuver DC", def: "8 + PB + relevant modifier (STR or DEX). The save DC for maneuvers a feature forces on a target." },
+  { term: "Fodder / Apex", def: "Fodder = almost everything (incl. Clickers); fully subject to lethality rules. Apex = rare bosses immune to instant-death/Finishers." },
+  { term: "Downed", def: "A PC at 0 HP: unconscious & Open. DC 10 CON saves each turn — 3 successes stabilize, 3 failures = dead." },
+  { term: "Durability Check", def: "On an improvised-weapon hit, roll d4: base breaks on 1–3; Upgraded/Brawler weapons break only on 1." },
+  { term: "Massive Injury", def: "An enemy hit for 50%+ of its max HP rolls on the 1d10 injury table. 75%+ instantly kills Fodder." },
+  { term: "Resolve", def: "Resolve = level ÷ 2, rounded up (max 5). Refreshes fully on a long rest. Spend 1 Resolve to: reroll any d20 (yours or one forced on you) and take the new result; OR make a Last Stand while Downed (act and move at half speed without stabilizing)." },
+];
 
-/* ====================== TAB NAV ====================== */
-.tab-nav {
-  position: sticky; top: 0; z-index: 15;
-  display: flex;
-  max-width: 1180px; margin: 12px auto 0;
-  padding: 0 12px;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.tab-nav::-webkit-scrollbar { display: none; }
-.tab-btn {
-  flex: 1 1 auto;
-  min-width: 96px; min-height: var(--tap);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 2px;
-  background: linear-gradient(180deg, var(--panel-2), var(--panel));
-  border: 1px solid var(--line-soft);
-  border-bottom: none;
-  border-radius: var(--radius) var(--radius) 0 0;
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: 6px 10px;
-  transition: background .18s, color .18s, transform .12s;
-  position: relative; z-index: 2;
-}
-.tab-btn .tab-icon { font-size: 1.15rem; filter: grayscale(0.3); }
-.tab-btn .tab-text { font-size: 0.66rem; letter-spacing: 0.7px; text-transform: uppercase; font-weight: 700; }
-.tab-btn:hover { color: var(--text); background: linear-gradient(180deg, var(--card-hi), var(--panel-2)); }
-.tab-btn.active {
-  color: var(--green);
-  background: linear-gradient(180deg, var(--card-hi), var(--card));
-  border-color: var(--line);
-  box-shadow: 0 -3px 0 var(--green-deep) inset;
-}
-.tab-btn.active .tab-icon { filter: none; }
-
-/* ====================== CONTENT ====================== */
-.content {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 16px 12px 40px;
-  position: relative; z-index: 2;
-}
-.tab-panel { display: none; animation: fade .25s ease; }
-.tab-panel.active { display: block; }
-@keyframes fade { from { opacity: 0; transform: translateY(6px);} to {opacity:1; transform:none;} }
-
-.panel {
-  background: linear-gradient(170deg, var(--panel-2), var(--panel));
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: var(--shadow);
-}
-.panel-head {
-  display: flex; align-items: baseline; justify-content: space-between;
-  gap: 10px; flex-wrap: wrap;
-  margin-bottom: 14px;
-  border-bottom: 1px solid var(--line-soft);
-  padding-bottom: 10px;
-}
-.panel-head.loose { border:none; padding-bottom: 0; margin: 4px 2px 14px; }
-.panel-head h2 { font-size: 1.02rem; color: var(--text); }
-.panel-hint { font-size: 0.72rem; color: var(--text-faint); text-transform: none; letter-spacing: 0.2px; }
-
-/* ====================== FIELDS ====================== */
-.field { display: flex; flex-direction: column; gap: 5px; }
-.field-label { font-size: 0.66rem; letter-spacing: 0.7px; text-transform: uppercase; color: var(--text-faint); }
-.field input, .field select, .field textarea, .summary-name-input {
-  -webkit-appearance: none; appearance: none;
-}
-.field input, .field select, .field textarea {
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  padding: 11px 12px;
-  font-size: 0.92rem;
-  min-height: 44px;
-}
-.field textarea { min-height: auto; resize: vertical; }
-.field input:focus, .field select:focus, .field textarea:focus {
-  outline: none; border-color: var(--green-deep);
-  box-shadow: 0 0 0 2px var(--green-glow);
-}
-.field select { cursor: pointer; }
-.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-.identity-grid { display: grid; grid-template-columns: 2fr 1.4fr 1fr; gap: 12px; }
-
-/* ====================== BACKGROUND CALLOUT ====================== */
-.bg-callout {
-  margin-top: 14px;
-  background: var(--green-glow);
-  border: 1px solid var(--green-deep);
-  border-left: 4px solid var(--green);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  font-size: 0.86rem;
-  color: var(--text);
-}
-.bg-callout strong { color: var(--green); }
-.bg-callout.empty { display: none; }
-
-/* ====================== HP BLOCK ====================== */
-.hp-block {
-  margin-top: 16px;
-  display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
-  background: linear-gradient(180deg, var(--bg-2), var(--card));
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 14px 16px;
-}
-.hp-readout { min-width: 0; }
-.hp-label { font-size: 0.64rem; letter-spacing: 1.2px; color: var(--text-faint); }
-.hp-numbers { font-size: 2.1rem; font-weight: 800; line-height: 1; margin: 2px 0 8px; }
-.hp-numbers #hp-current { color: var(--green); }
-.hp-sep { color: var(--text-faint); margin: 0 6px; font-weight: 400; }
-#hp-max { color: var(--text-dim); font-size: 1.4rem; }
-.hp-bar { height: 10px; background: var(--bg-0); border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
-.hp-bar-fill {
-  height: 100%; width: 100%;
-  background: linear-gradient(90deg, var(--green-deep), var(--green));
-  transition: width .3s ease;
-}
-.hp-bar-fill.low  { background: linear-gradient(90deg, #8a5a2a, var(--rust)); }
-.hp-bar-fill.crit { background: linear-gradient(90deg, var(--red-deep), var(--red)); }
-.death-save-block[hidden] { display: none; }
-.death-save-block {
-  margin-top: 12px; grid-column: 1 / -1;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
-  background: linear-gradient(180deg, var(--bg-2), var(--card));
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 10px 14px;
-}
-.ds-status { font-weight: 800; font-size: 1.05rem; color: var(--rust); min-width: 70px; }
-.ds-pips { display: flex; flex-direction: column; gap: 4px; }
-.ds-row { display: flex; align-items: center; gap: 8px; }
-.ds-row-label { font-size: 0.64rem; letter-spacing: 1px; color: var(--text-faint); min-width: 70px; }
-.ds-pip-group { display: flex; gap: 4px; }
-.ds-pip {
-  width: 16px; height: 16px; border-radius: 50%;
-  border: 1px solid var(--line); display: inline-block;
-  background: var(--bg-0);
-}
-.ds-pip.success.filled { background: var(--green); border-color: var(--green); }
-.ds-pip.fail.filled { background: var(--red); border-color: var(--red); }
-.hp-controls { display: grid; grid-template-columns: repeat(2, auto); gap: 8px; }
-.hp-btn {
-  min-width: 56px; min-height: var(--tap);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--card-hi), var(--card));
-  color: var(--text); font-weight: 800; font-size: 1rem;
-  cursor: pointer; transition: transform .1s, background .15s, box-shadow .15s;
-}
-.hp-btn:hover { background: linear-gradient(180deg, #3d4330, var(--card-hi)); }
-.hp-btn:active { transform: translateY(2px); }
-.hp-btn.minus { color: #e08b7e; }
-.hp-btn.plus  { color: var(--green); }
-.hp-btn.full  { grid-column: 1 / -1; color: var(--text-dim); letter-spacing: 1px; font-size: 0.8rem; }
-
-/* ====================== STAT GRID ====================== */
-.stat-grid {
-  margin-top: 16px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
-  gap: 10px;
-}
-.stat-card {
-  background: linear-gradient(180deg, var(--card-hi), var(--card));
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 12px 8px;
-  text-align: center;
-}
-.stat-card .sc-val { font-size: 1.6rem; font-weight: 800; color: var(--text); line-height: 1; }
-.stat-card .sc-lbl { font-size: 0.6rem; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-faint); margin-top: 5px; }
-.stat-card.accent .sc-val { color: var(--green); }
-
-/* ====================== ABILITY SCORES ====================== */
-.ability-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
-.ability-card {
-  background: linear-gradient(180deg, var(--card-hi), var(--card));
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 10px 6px; text-align: center;
-}
-.ability-card .ab-name { font-size: 0.66rem; letter-spacing: 1px; color: var(--green); font-weight: 700; }
-.ability-card .ab-mod { font-size: 1.5rem; font-weight: 800; margin: 4px 0 2px; }
-.ability-card input {
-  width: 56px; text-align: center; background: var(--bg-2);
-  border: 1px solid var(--line); border-radius: 6px; color: var(--text-dim);
-  font-size: 0.85rem; padding: 5px 2px; min-height: 38px;
-}
-.ability-card input:focus { outline: none; border-color: var(--green-deep); }
-
-/* ====================== ACTIONS DASHBOARD ====================== */
-.actions-dashboard {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;
-}
-.action-col { display: flex; flex-direction: column; }
-.action-col-head {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 0.74rem; letter-spacing: 1px; text-transform: uppercase; font-weight: 800;
-  padding: 7px 10px; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  border: 1px solid var(--line); border-bottom: none;
-}
-.action-col-head .count { margin-left: auto; font-size: 0.66rem; opacity: 0.8; background: rgba(0,0,0,0.3); padding: 1px 7px; border-radius: 10px; }
-.action-col.act    .action-col-head { color: #e6c06a; background: rgba(176,106,58,0.14); }
-.action-col.bonus  .action-col-head { color: var(--green); background: var(--green-glow); }
-.action-col.react  .action-col-head { color: var(--blue-cold); background: rgba(111,147,166,0.12); }
-.action-col.pass   .action-col-head { color: var(--brown); background: rgba(156,123,79,0.12); }
-.action-col-body {
-  border: 1px solid var(--line); border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-  background: var(--bg-2); padding: 8px; display: flex; flex-direction: column; gap: 8px;
-  flex: 1;
-}
-.ability {
-  background: linear-gradient(180deg, var(--card), var(--card-hi));
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
-  padding: 9px 11px;
-}
-.ability .ab-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.ability .ab-title { font-weight: 700; font-size: 0.86rem; color: var(--text); }
-.ability .ab-src { font-size: 0.58rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
-.ability .ab-desc { font-size: 0.76rem; color: var(--text-dim); margin-top: 4px; line-height: 1.35; }
-.action-col-body .empty-note { color: var(--text-faint); font-size: 0.76rem; font-style: italic; padding: 8px; text-align: center; }
-
-/* ====================== PERKS ====================== */
-.perks-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 10px; margin-bottom: 14px; }
-.perk-card {
-  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm);
-  padding: 10px 12px; display: flex; justify-content: space-between; gap: 8px; align-items: flex-start;
-}
-.perk-card.fixed { border-style: dashed; opacity: 0.92; }
-.perk-card .pk-name { font-weight: 700; font-size: 0.86rem; color: var(--green); }
-.perk-card .pk-desc { font-size: 0.74rem; color: var(--text-dim); margin-top: 3px; line-height:1.35; }
-.perk-card .pk-tag { font-size: 0.56rem; color: var(--text-faint); text-transform: uppercase; letter-spacing:0.5px; }
-.icon-btn {
-  background: transparent; border: none; color: var(--text-faint); cursor: pointer;
-  font-size: 1rem; padding: 2px 4px; line-height: 1; border-radius: 4px;
-}
-.icon-btn:hover { color: var(--red); background: rgba(184,72,58,0.12); }
-.perk-adder { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
-.perk-adder .field { flex: 1 1 160px; }
-
-/* ====================== PROFICIENCIES ====================== */
-.prof-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap: 14px; }
-.prof-group h3 { font-size: 0.74rem; color: var(--brown); letter-spacing: 1px; margin-bottom: 8px; }
-.prof-item {
-  background: var(--card); border: 1px solid var(--line-soft); border-left: 3px solid var(--green-deep);
-  border-radius: 6px; padding: 8px 11px; margin-bottom: 7px;
-}
-.prof-item .pi-name { font-weight: 700; font-size: 0.82rem; color: var(--text); }
-.prof-item .pi-eff  { font-size: 0.74rem; color: var(--text-dim); margin-top: 2px; }
-.prof-empty { font-size: 0.76rem; color: var(--text-faint); font-style: italic; }
-
-/* ====================== STATUS ====================== */
-.status-adder { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-.status-preset {
-  font-size: 0.74rem; padding: 7px 12px; border-radius: 20px; cursor: pointer;
-  background: var(--card); border: 1px dashed var(--line); color: var(--text-dim);
-  min-height: 38px;
-}
-.status-preset:hover { border-color: var(--green-deep); color: var(--green); }
-
-/* ====================== BUTTONS ====================== */
-.btn {
-  min-height: 44px; padding: 10px 18px; border-radius: var(--radius-sm);
-  border: 1px solid var(--line); cursor: pointer; font-weight: 700; font-size: 0.82rem;
-  letter-spacing: 0.4px; transition: transform .1s, background .15s, box-shadow .15s;
-  background: linear-gradient(180deg, var(--card-hi), var(--card)); color: var(--text);
-}
-.btn:hover { background: linear-gradient(180deg, #3d4330, var(--card-hi)); }
-.btn:active { transform: translateY(2px); }
-.btn.accent {
-  background: linear-gradient(180deg, var(--green-deep), var(--olive));
-  border-color: var(--green-deep); color: #11140a;
-  box-shadow: 0 3px 0 #3f4a1f, var(--shadow);
-}
-.btn.accent:hover { background: linear-gradient(180deg, var(--green), var(--green-deep)); }
-.btn.accent:active { box-shadow: 0 1px 0 #3f4a1f; }
-.btn.ghost { background: transparent; }
-.btn.ghost:hover { background: var(--card); }
-.btn.danger-ghost { background: transparent; color: #d98072; border-color: var(--red-deep); }
-.btn.danger-ghost:hover { background: rgba(184,72,58,0.14); }
-.btn.small { min-height: 36px; padding: 6px 12px; font-size: 0.74rem; }
-
-/* ====================== WEAPONS ====================== */
-.weapons-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px,1fr)); gap: 16px; }
-.weapon-card {
-  background: linear-gradient(165deg, var(--panel-2), var(--panel));
-  border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 16px; box-shadow: var(--shadow); position: relative;
-  border-top: 3px solid var(--brown);
-}
-.weapon-card.cat-rifle, .weapon-card.cat-bow { border-top-color: var(--green-deep); }
-.weapon-card.cat-handgun { border-top-color: var(--rust); }
-.weapon-card.cat-blunt, .weapon-card.cat-improvised, .weapon-card.cat-melee { border-top-color: var(--brown); }
-.weapon-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.weapon-name { font-size: 1.1rem; font-weight: 800; color: var(--text); letter-spacing: 0.5px; }
-.weapon-type { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--green); margin-top: 2px; }
-.weapon-actions { display: flex; gap: 4px; }
-.weapon-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
-.wstat {
-  background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 6px; padding: 7px 10px;
-}
-.wstat .ws-lbl { font-size: 0.58rem; letter-spacing: 0.7px; text-transform: uppercase; color: var(--text-faint); }
-.wstat .ws-val { font-size: 0.92rem; font-weight: 700; color: var(--text); margin-top: 2px; }
-.wstat.sound .ws-val { color: var(--rust); }
-.wstat.sound.quiet .ws-val, .wstat.sound.silent .ws-val { color: var(--green); }
-
-.ammo-track { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px; }
-.ammo-track.none { display: none; }
-.ammo-top { display: flex; justify-content: space-between; align-items: center; }
-.ammo-label { font-size: 0.62rem; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-faint); }
-.ammo-count { font-size: 1.3rem; font-weight: 800; }
-.ammo-count .cur { color: var(--green); }
-.ammo-count .max { color: var(--text-faint); font-size: 1rem; }
-.ammo-controls { display: flex; gap: 8px; margin-top: 8px; }
-.ammo-btn {
-  flex: 1; min-height: 44px; border-radius: 6px; border: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--card-hi), var(--card)); color: var(--text);
-  font-size: 1.2rem; font-weight: 800; cursor: pointer;
-}
-.ammo-btn:active { transform: translateY(2px); }
-.ammo-btn.minus { color: #e08b7e; }
-.ammo-btn.plus { color: var(--green); }
-.ammo-btn.reload { flex: 1.4; font-size: 0.74rem; color: var(--text-dim); letter-spacing: 0.5px; }
-
-.weapon-section-label { font-size: 0.62rem; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-faint); margin: 10px 0 5px; }
-.upgrade-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-.bonus-list { display: flex; flex-direction: column; gap: 6px; }
-.bonus-item {
-  background: var(--green-glow); border: 1px solid var(--green-deep); border-radius: 6px;
-  padding: 7px 10px; font-size: 0.76rem;
-}
-.bonus-item .bi-name { font-weight: 700; color: var(--green); }
-.bonus-item .bi-desc { color: var(--text-dim); margin-top: 2px; }
-.weapon-notes { font-size: 0.76rem; color: var(--text-dim); font-style: italic; margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
-.empty-state { text-align: center; color: var(--text-faint); padding: 40px 20px; font-style: italic; }
-
-/* ====================== BACKPACK ====================== */
-.backpack { display: flex; flex-direction: column; gap: 16px; }
-.inv-cat {
-  background: linear-gradient(170deg, var(--panel-2), var(--panel));
-  border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 14px;
-  box-shadow: var(--shadow);
-}
-.inv-cat-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.inv-cat-head h3 { font-size: 0.84rem; color: var(--text); }
-.inv-cat-head .ic-icon { font-size: 1.1rem; }
-.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px; }
-.inv-item {
-  background: linear-gradient(180deg, var(--card-hi), var(--card));
-  border: 1px solid var(--line); border-radius: var(--radius-sm);
-  padding: 12px 10px; text-align: center; position: relative;
-  transition: border-color .15s, transform .1s;
-}
-.inv-item.has-qty { border-color: var(--green-deep); }
-.inv-item.zero { opacity: 0.55; }
-.inv-icon { font-size: 1.8rem; display: block; line-height: 1; filter: grayscale(0.2); }
-.inv-item.zero .inv-icon { filter: grayscale(0.9); }
-.inv-name { font-size: 0.72rem; color: var(--text-dim); margin: 6px 0 4px; min-height: 2.1em; display:flex; align-items:center; justify-content:center; }
-.inv-qty { font-size: 1.5rem; font-weight: 800; color: var(--green); line-height: 1; }
-.inv-item.zero .inv-qty { color: var(--text-faint); }
-.inv-controls { display: flex; gap: 6px; margin-top: 8px; }
-.inv-btn {
-  flex: 1; min-height: 40px; border-radius: 6px; border: 1px solid var(--line);
-  background: var(--bg-2); color: var(--text); font-size: 1.2rem; font-weight: 800; cursor: pointer;
-}
-.inv-btn:active { transform: translateY(2px); }
-.inv-btn.minus { color: #e08b7e; }
-.inv-btn.plus { color: var(--green); }
-.inv-recipe { font-size: 0.58rem; color: var(--text-faint); margin-top: 6px; font-style: italic; }
-
-/* ====================== SKILL TREES ====================== */
-.ap-banner {
-  display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
-  position: sticky; top: 64px; z-index: 10;
-}
-.ap-chip {
-  flex: 1 1 110px;
-  background: linear-gradient(180deg, var(--card-hi), var(--card));
-  border: 1px solid var(--green-deep); border-radius: var(--radius);
-  padding: 12px; text-align: center; box-shadow: var(--shadow);
-}
-.ap-chip.spent { border-color: var(--brown-deep); }
-.ap-chip.total { border-color: var(--line); }
-.ap-num { display: block; font-size: 1.8rem; font-weight: 800; color: var(--green); line-height: 1; }
-.ap-chip.spent .ap-num { color: var(--brown); }
-.ap-chip.total .ap-num { color: var(--text-dim); }
-.ap-lbl { font-size: 0.6rem; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-faint); }
-
-.tree-category-label {
-  font-size: 0.78rem; letter-spacing: 1.5px; color: var(--brown); text-transform: uppercase;
-  margin: 8px 2px 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line-soft);
-}
-.skill-trees { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); gap: 16px; }
-.tree-card {
-  background: linear-gradient(170deg, var(--panel-2), var(--panel));
-  border: 1px solid var(--line); border-radius: var(--radius); padding: 16px;
-  box-shadow: var(--shadow);
-}
-.tree-title { font-size: 0.96rem; color: var(--text); }
-.tree-flavor { font-size: 0.72rem; color: var(--text-faint); font-style: italic; margin: 3px 0 14px; text-transform: none; }
-.tier { position: relative; padding-left: 30px; padding-bottom: 14px; }
-.tier:last-child { padding-bottom: 0; }
-.tier::before { /* node */
-  content: ""; position: absolute; left: 4px; top: 4px;
-  width: 16px; height: 16px; border-radius: 50%;
-  background: var(--bg-0); border: 2px solid var(--line); z-index: 2;
-}
-.tier::after { /* connector */
-  content: ""; position: absolute; left: 11px; top: 18px; bottom: -4px;
-  width: 2px; background: var(--line-soft); z-index: 1;
-}
-.tier:last-child::after { display: none; }
-.tier.unlocked::before { background: var(--green); border-color: var(--green); box-shadow: 0 0 8px var(--green-glow); }
-.tier.unlocked::after { background: var(--green-deep); }
-.tier-card {
-  background: var(--card); border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
-  padding: 10px 12px; cursor: pointer; transition: border-color .15s, background .15s, transform .1s;
-}
-.tier.unlocked .tier-card { border-color: var(--green-deep); background: linear-gradient(180deg, var(--card-hi), var(--card)); }
-.tier.locked .tier-card { opacity: 0.82; }
-.tier.locked.unavailable .tier-card { opacity: 0.5; cursor: not-allowed; }
-.tier-card:hover { border-color: var(--green); }
-.tier.locked.unavailable .tier-card:hover { border-color: var(--line-soft); }
-.tier-card:active { transform: scale(0.99); }
-.tier-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.tier-roman { font-size: 0.6rem; letter-spacing: 1px; color: var(--text-faint); font-weight: 800; }
-.tier-name { font-weight: 700; font-size: 0.86rem; color: var(--text); }
-.tier.unlocked .tier-name { color: var(--green); }
-.tier-cost {
-  font-size: 0.62rem; padding: 2px 8px; border-radius: 10px; white-space: nowrap;
-  background: rgba(0,0,0,0.3); border: 1px solid var(--line); color: var(--text-dim);
-}
-.tier.unlocked .tier-cost { background: var(--green-glow); border-color: var(--green-deep); color: var(--green); }
-.tier-desc { font-size: 0.75rem; color: var(--text-dim); margin-top: 5px; line-height: 1.4; }
-.tier-status { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 6px; font-weight: 700; }
-.tier.unlocked .tier-status { color: var(--green); }
-.tier.locked .tier-status { color: var(--text-faint); }
-.tier.locked.unavailable .tier-status { color: var(--red); }
-
-/* ====================== NOTES ====================== */
-.notes-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 14px; align-items: start; }
-.note-card {
-  background: linear-gradient(170deg, var(--panel-2), var(--panel));
-  border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
-  box-shadow: var(--shadow);
-}
-.note-head {
-  display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer;
-  background: var(--card); border-bottom: 1px solid var(--line-soft);
-}
-.note-head input {
-  flex: 1; background: transparent; border: none; color: var(--text);
-  font-weight: 700; font-size: 0.9rem; min-width: 0;
-}
-.note-head input:focus { outline: none; }
-.note-arrow { color: var(--text-faint); transition: transform .2s; }
-.note-card.collapsed .note-arrow { transform: rotate(-90deg); }
-.note-card.collapsed .note-body { display: none; }
-.note-body { padding: 0; }
-.note-body textarea {
-  width: 100%; background: transparent; border: none; color: var(--text-dim);
-  padding: 12px; font-size: 0.85rem; line-height: 1.5; resize: vertical; min-height: 120px;
-}
-.note-body textarea:focus { outline: none; }
-
-/* ====================== RULES REFERENCE ====================== */
-.ref-panel { padding: 0; overflow: hidden; }
-.ref-toggle {
-  width: 100%; display: flex; justify-content: space-between; align-items: center;
-  background: transparent; border: none; color: var(--text); cursor: pointer;
-  padding: 16px; font-size: 0.92rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
-}
-.ref-toggle:hover { color: var(--green); }
-.ref-arrow { transition: transform .25s; }
-.ref-body.collapsed + .ref-arrow, .ref-body.collapsed { display: none; }
-.ref-toggle .ref-arrow { }
-.ref-panel.open .ref-arrow { transform: rotate(180deg); }
-.ref-body { padding: 0 16px 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); gap: 10px; }
-.ref-item {
-  background: var(--card); border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
-  padding: 10px 12px; border-left: 3px solid var(--brown);
-}
-.ref-item .rf-term { font-weight: 800; font-size: 0.82rem; color: var(--brown); letter-spacing: 0.5px; }
-.ref-item .rf-def { font-size: 0.76rem; color: var(--text-dim); margin-top: 3px; line-height: 1.4; }
-
-/* ====================== DATA BAR ====================== */
-.data-bar {
-  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
-  margin-top: 8px; padding: 14px; justify-content: center;
-}
-.save-indicator {
-  font-size: 0.72rem; color: var(--text-faint); margin-left: auto;
-  transition: color .3s, opacity .3s;
-}
-.save-indicator.flash { color: var(--green); }
-
-/* ====================== MODAL ====================== */
-.modal-overlay {
-  position: fixed; inset: 0; z-index: 50;
-  background: rgba(8,9,5,0.78); backdrop-filter: blur(3px);
-  display: flex; align-items: center; justify-content: center; padding: 16px;
-}
-.modal-overlay[hidden] { display: none; }
-.modal-overlay.hidden { display: none; }
-.modal-confirm-msg { font-size: 0.9rem; color: var(--text); line-height: 1.4; }
-.modal-item-body { font-size: 0.8rem; color: var(--text-dim); line-height: 1.4; }
-.modal {
-  width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto;
-  background: linear-gradient(170deg, var(--panel-2), var(--panel));
-  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg);
-}
-.modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--line-soft); }
-.modal-head h3 { font-size: 1rem; color: var(--text); }
-.modal-close { background: transparent; border: none; color: var(--text-faint); font-size: 1.3rem; cursor: pointer; }
-.modal-close:hover { color: var(--red); }
-.modal-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px; border-top: 1px solid var(--line-soft); }
-
-.upgrade-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
-.upgrade-row:last-child { border-bottom: none; }
-.upgrade-hint { font-size: 0.7rem; color: var(--text-faint); margin-top: 2px; }
-.upgrade-stepper { display: flex; align-items: center; gap: 8px; }
-.upgrade-val { min-width: 24px; text-align: center; font-weight: 600; }
-
-.dice-help-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
-.dice-help-table th, .dice-help-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
-.dice-help-table th { color: var(--text-faint); text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.6px; }
-.dice-help-table code { color: var(--accent, #7fd); }
-.dice-help-examples { margin-top: 10px; font-size: 0.78rem; line-height: 1.5; }
-.dice-help-examples code { color: var(--accent, #7fd); }
-
-/* ====================== TOAST ====================== */
-.toast {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  background: var(--card-hi); border: 1px solid var(--green-deep); color: var(--text);
-  padding: 12px 20px; border-radius: var(--radius); box-shadow: var(--shadow-lg);
-  z-index: 60; font-size: 0.86rem; font-weight: 600;
-  animation: toastIn .25s ease;
-}
-.toast[hidden] { display: none; }
-@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 12px);} to {opacity:1; transform: translate(-50%,0);} }
-
-/* ====================== RESPONSIVE ====================== */
-@media (max-width: 880px) {
-  .summary-inner { grid-template-columns: 1fr; }
-  .summary-stats { grid-template-columns: repeat(4, 1fr); }
-  .identity-grid { grid-template-columns: 1fr; }
+/* ============================================================
+   2. WEAPON TEMPLATE HELPER (used by background gear above)
+   ============================================================ */
+function tmplWeapon(name, category, overrides = {}) {
+  const base = GAME_DATA.weaponTemplates[name] || GAME_DATA.weaponTemplates[Object.keys(GAME_DATA.weaponTemplates).find(k => GAME_DATA.weaponTemplates[k].name === name)] || {};
+  const w = {
+    id: uid(),
+    name,
+    category: category || base.category || "melee",
+    damage: base.damage || "1d6",
+    range: base.range || "Melee (5 ft)",
+    ammoType: base.ammoType || "",
+    maxAmmo: base.maxAmmo || 0,
+    currentAmmo: base.maxAmmo || 0,
+    sound: base.sound || "Medium",
+    silenced: false,
+    upgrades: (base.upgrades || []).slice(),
+    notes: "",
+  };
+  return Object.assign(w, overrides);
 }
 
-@media (max-width: 620px) {
-  body { padding-bottom: 80px; }
-  .summary-inner { padding: 8px 12px; gap: 8px; }
-  .summary-name-input { font-size: 1.1rem; }
-  .summary-meta { grid-template-columns: 1fr; }
-  .summary-stats { grid-template-columns: repeat(4, 1fr); gap: 5px; }
-  .stat-pill .sp-val { font-size: 0.9rem; }
+/* ============================================================
+   3. STATE
+   ============================================================ */
+const STORAGE_KEY = "tlou-survivor-dashboard-v1";
 
-  /* Bottom-docked tab bar like a mobile game */
-  .tab-nav {
-    position: fixed; top: auto; bottom: 0; left: 0; right: 0;
-    margin: 0; padding: 0; gap: 0;
-    background: linear-gradient(0deg, rgba(16,18,8,0.99), rgba(20,23,13,0.96));
-    border-top: 1px solid var(--line); z-index: 30;
+function uid() { return "x" + Math.random().toString(36).slice(2, 9); }
+function mod(score) { return Math.floor((Number(score) - 10) / 2); }
+function fmtMod(m) { return (m >= 0 ? "+" : "") + m; }
+
+/* AP gained per level (cumulative) & PB by level */
+const AP_BY_LEVEL = { 1: 2, 2: 4, 3: 6, 4: 8, 5: 10, 6: 13, 7: 16, 8: 19, 9: 22, 10: 25 };
+function pbForLevel(lvl) { return lvl >= 9 ? 4 : lvl >= 5 ? 3 : 2; }
+function resolveForLevel(lvl) { return Math.min(5, Math.ceil(lvl / 2)); }
+
+function defaultCharacter() {
+  return {
+    name: "",
+    background: "",
+    level: 1,
+    abilities: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
+    currentHP: 10,
+    tempHP: 0,
+    wearingArmor: false,
+    weapons: [],
+    inventory: {},          // id -> qty
+    unlocked: {},           // treeId -> highest tier index unlocked (1..3)
+    perks: [],              // [{type, choice}]  (player-chosen survivor perks)
+    statuses: [],           // [string]
+    notes: [],              // [{id, title, body, collapsed}]
+    resolveCurrent: null,   // null = full (synced to max)
+    weaponSlots: [null],    // rifle/bow/melee weapon ids (max 3)
+    holsters: [null],       // handgun ids (max 2)
+    armor: null,            // { type, acBonus, other } or null
+    deathSaves: { success: 0, fail: 0 },
+    customItems: [],        // [{id, name, desc, qty}]
+    backpackSlots: 12,      // general inventory slots (default 12, max 20)
+  };
+}
+
+let character = loadCharacter();
+
+function loadCharacter() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const c = Object.assign(defaultCharacter(), JSON.parse(raw));
+      // Migrate old fixed equip {longgun, handgun, melee} → addable slot arrays.
+      if (!Array.isArray(c.weaponSlots)) {
+        const ws = [];
+        if (c.equip && c.equip.longgun) ws.push(c.equip.longgun);
+        if (c.equip && c.equip.melee) ws.push(c.equip.melee);
+        c.weaponSlots = ws.length ? ws : [null];
+      }
+      if (!Array.isArray(c.holsters)) {
+        c.holsters = (c.equip && c.equip.handgun) ? [c.equip.handgun] : [null];
+      }
+      if (c.armor === undefined) c.armor = null;
+      if (!c.deathSaves) c.deathSaves = { success: 0, fail: 0 };
+      if (!Array.isArray(c.customItems)) c.customItems = [];
+      if (typeof c.backpackSlots !== "number" || c.backpackSlots < 12) c.backpackSlots = 12;
+      if (c.backpackSlots > 20) c.backpackSlots = 20;
+      delete c.equip;
+      return c;
+    }
+  } catch (e) { console.warn("Load failed", e); }
+  return defaultCharacter();
+}
+
+let saveTimer = null;
+function save(flash = true) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(character));
+    if (flash) {
+      const ind = document.getElementById("save-indicator");
+      ind.textContent = "Saved ✓";
+      ind.classList.add("flash");
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => { ind.classList.remove("flash"); ind.textContent = "Saved"; }, 1200);
+    }
+  } catch (e) { console.warn("Save failed", e); }
+}
+
+/* ============================================================
+   4. DERIVE — stats + active effects + dashboard
+   ============================================================ */
+function derive() {
+  const abilityBonuses = {};
+  character.perks.forEach(p => {
+    if (p.type === "abilityImprovement" && p.choice) {
+      abilityBonuses[p.choice] = (abilityBonuses[p.choice] || 0) + 1;
+    }
+  });
+  const mods = {};
+  ABILITIES.forEach(a => mods[a] = mod(character.abilities[a] + (abilityBonuses[a] || 0)));
+  const level = Number(character.level) || 1;
+  const pb = pbForLevel(level);
+
+  // Gather every active source of effects.
+  const sources = collectActiveSources();
+
+  // Base derived stats
+  const d = {
+    maxHp: 10 + mods.con,
+    ac: 10 + mods.dex,
+    speed: 30,
+    initiative: mods.dex,
+    pb,
+    resolve: resolveForLevel(level),
+    flags: {},
+  };
+
+  const ctx = { mods, pb, level, character };
+
+  // Apply stat + flag contributions
+  sources.forEach(s => {
+    if (typeof s.stat === "function") s.stat(d, ctx);
+    if (s.flags) Object.assign(d.flags, s.flags);
+  });
+
+  // Worn armor's AC bonus
+  if (character.armor) d.ac += Number(character.armor.acBonus) || 0;
+
+  d.maneuverDC = 8 + pb + Math.max(mods.str, mods.dex);
+
+  // AP economy
+  const apTotal = AP_BY_LEVEL[level] || 2;
+  let apSpent = 0;
+  Object.keys(character.unlocked).forEach(tid => {
+    const tree = GAME_DATA.skillTrees[tid];
+    const lvlUnlocked = character.unlocked[tid];
+    if (tree && lvlUnlocked) for (let i = 0; i < lvlUnlocked; i++) apSpent += tree.tiers[i].cost;
+  });
+  d.apTotal = apTotal;
+  d.apSpent = apSpent;
+  d.apAvailable = apTotal - apSpent;
+
+  // Build dashboard from all sources' dash entries + dynamic (inventory/weapon) actions
+  d.dashboard = buildDashboard(sources, d);
+
+  // ---- Resolve pool (level/4 rounded down + 1: 1 @ lvl1-4, 2 @ 5-8, 3 @ 9-10) ----
+  d.resolveMax = d.resolve;
+  if (character.resolveCurrent == null || character.resolveCurrent > d.resolveMax) {
+    character.resolveCurrent = d.resolveMax;
   }
-  .tab-btn {
-    border-radius: 0; border: none; border-top: 3px solid transparent;
-    min-width: 0; min-height: 58px; flex: 1;
+  d.resolveCurrent = character.resolveCurrent;
+
+  // ---- Proficiencies for the Rolls page ----
+  d.mods = mods;
+  const bg = GAME_DATA.backgrounds[character.background];
+  const allPerks = (bg ? bg.perks : []).concat(character.perks);
+  const profSkills = new Set(allPerks.filter(p => p.type === "skill").map(p => p.choice));
+  const profSaveAbility = (allPerks.find(p => p.type === "steel") || {}).choice;
+  const profSaveKey = profSaveAbility ? profSaveAbility.replace(" Saves", "").toLowerCase() : null;
+
+  d.saves = {};
+  ABILITIES.forEach(a => { d.saves[a] = mods[a] + (a === profSaveKey ? pb : 0); });
+
+  d.skills = {};
+  Object.keys(SKILL_ABILITY).forEach(skill => {
+    const a = SKILL_ABILITY[skill];
+    d.skills[skill] = { ability: a, mod: mods[a] + (profSkills.has(skill) ? pb : 0), proficient: profSkills.has(skill) };
+  });
+
+  return d;
+}
+
+/* Returns a flat list of active effect-bearing objects:
+   - background backgroundPerk
+   - chosen survivor perks (with their menu definition)
+   - each unlocked skill tier                                                 */
+function collectActiveSources() {
+  const out = [];
+
+  const bg = GAME_DATA.backgrounds[character.background];
+  if (bg) out.push(Object.assign({ _srcLabel: bg.name }, bg.backgroundPerk));
+
+  // Survivor perks (only ones with dash/stat/flags matter for effects)
+  character.perks.forEach(p => {
+    const def = GAME_DATA.survivorPerks[p.type];
+    if (!def) return;
+    if (def.dash || def.stat || def.flags) {
+      out.push({ _srcLabel: def.label, dash: def.dash, stat: def.stat, flags: def.flags });
+    }
+  });
+
+  // Unlocked skill tiers
+  Object.keys(character.unlocked).forEach(tid => {
+    const tree = GAME_DATA.skillTrees[tid];
+    const n = character.unlocked[tid];
+    if (!tree || !n) return;
+    for (let i = 0; i < n; i++) {
+      const tier = tree.tiers[i];
+      out.push(Object.assign({ _srcLabel: tree.name, _tier: i }, tier));
+    }
+  });
+
+  return out;
+}
+
+function buildDashboard(sources, d) {
+  const board = { action: [], bonus: [], reaction: [], passive: [] };
+  const push = (cat, name, desc, src) => board[cat].push({ name, desc, src });
+
+  // ---- Baseline universal options (always available) ----
+  push(CAT.ACTION, "Attack", "Make one weapon attack (see your Weapons for damage, bonuses & ammo).", "Core");
+  push(CAT.ACTION, "Dash", "Double your movement speed this turn.", "Core");
+  push(CAT.ACTION, "Disengage", "Move without provoking opportunity attacks.", "Core");
+  push(CAT.ACTION, "Hide", "Make a Stealth check to become Hidden (needs cover/concealment).", "Core");
+  push(CAT.REACT, "Opportunity Attack", "Melee attack a creature that leaves your reach.", "Core");
+
+  // ---- Crafting action (action by default, bonus with Fast Hands) ----
+  if (d.flags.craftAsBonus) {
+    // handled by the Fast Hands dash entry already; also keep an action option
+    push(CAT.ACTION, "Craft Item", "Craft a basic item from materials (or use Fast Hands as a bonus action).", "Core");
+  } else {
+    push(CAT.ACTION, "Craft Item", "Craft a basic item from materials (no enemies within 10 ft).", "Core");
   }
-  .tab-btn.active { box-shadow: none; border-top-color: var(--green); background: var(--card); }
-  .content { padding: 12px 10px 30px; }
-  .panel { padding: 13px; }
-  .field-row { grid-template-columns: 1fr; }
-  .ability-grid { grid-template-columns: repeat(3, 1fr); }
-  .hp-block { grid-template-columns: 1fr; }
-  .hp-controls { grid-template-columns: repeat(4, 1fr); }
-  .hp-btn.full { grid-column: 1 / -1; }
-  .ap-banner { top: 56px; }
-  .weapons-grid, .notes-list, .skill-trees { grid-template-columns: 1fr; }
+
+  // ---- Inventory-driven actions ----
+  const inv = character.inventory;
+  const healCat = d.flags.healAsBonus ? CAT.BONUS : CAT.ACTION;
+  if ((inv.bandage || 0) > 0) push(healCat, "Use Bandage", `Heal 1d4 + CON. (${inv.bandage} carried)`, "Backpack");
+  if ((inv.medkit || 0) > 0) push(healCat, "Use Medkit", `Heal 2d6 + CON per use. (${inv.medkit} carried)`, "Backpack");
+  if ((inv.molotov || 0) > 0) push(CAT.ACTION, "Throw Molotov", `1d10 fire; DC 15 DEX save vs catching fire. (${inv.molotov} carried)`, "Backpack");
+  if ((inv.shiv || 0) > 0) push(CAT.ACTION, "Use Shiv", `Instant kill vs Unaware (max HP ≤ 30); else DC 15 CON or die. (${inv.shiv} carried)`, "Backpack");
+
+  // ---- All dash entries from sources ----
+  sources.forEach(s => {
+    if (!s.dash) return;
+    s.dash.forEach(entry => push(entry.cat, entry.name, entry.desc, s._srcLabel || "Perk"));
+  });
+
+  // De-duplicate by name within a category (e.g. Chain Fighter overriding Iron Fist text stays separate; identical entries merge)
+  Object.keys(board).forEach(cat => {
+    const seen = new Set();
+    board[cat] = board[cat].filter(e => {
+      const key = e.name + "|" + e.desc;
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+  });
+
+  return board;
 }
 
-@media (max-width: 380px) {
-  .summary-stats { grid-template-columns: repeat(3, 1fr); }
-  .ability-grid { grid-template-columns: repeat(2, 1fr); }
+/* Active bonuses on a given weapon (from background + tiers' weapon effects) */
+function weaponBonuses(weapon) {
+  const out = [];
+  collectActiveSources().forEach(s => {
+    if (s.weapon && s.weapon.match(weapon)) {
+      out.push({ name: s.weapon.name, desc: s.weapon.desc });
+    }
+  });
+  return out;
 }
 
-/* Larger tap feedback on touch devices */
-@media (hover: none) {
-  .tier-card:active { background: var(--card-hi); }
+/* Weapon category -> Weapon Training choice that grants proficiency */
+const WEAPON_PROF_MAP = { blunt: "Blunt Melee", improvised: "Improvised", handgun: "Handguns", rifle: "Rifles", shotgun: "Shotguns", bow: "Bows" };
+function weaponProficient(w) {
+  const bg = GAME_DATA.backgrounds[character.background];
+  const allPerks = (bg ? bg.perks : []).concat(character.perks);
+  const need = WEAPON_PROF_MAP[w.category];
+  return !!need && allPerks.some(p => p.type === "weapon" && p.choice === need);
+}
+/* Ability used for a weapon's attack roll */
+function weaponAbility(w) {
+  return (w.category === "blunt" || w.category === "improvised" || w.category === "melee") ? "str" : "dex";
+}
+function weaponToHitMod(w) {
+  return D.mods[weaponAbility(w)] + (weaponProficient(w) ? D.pb : 0);
 }
 
-/* ====================== ICONS (b/w line art) ====================== */
-.icon {
-  width: 1.05em; height: 1.05em; display: inline-block; vertical-align: -0.18em;
-  filter: brightness(0) invert(1); opacity: 0.85;
-}
-.tab-icon .icon { width: 1.2rem; height: 1.2rem; }
-.action-col-head .icon { width: 1.05rem; height: 1.05rem; }
-.ic-icon .icon { width: 1.1rem; height: 1.1rem; }
-.btn .icon, .ref-toggle .icon { width: 1rem; height: 1rem; }
-.tier.unlocked .icon, .stat-pill .icon { filter: brightness(0) saturate(100%) invert(70%) sepia(40%) saturate(400%) hue-rotate(60deg); }
-
-/* ====================== TEMP HP ====================== */
-.temp-hp-block {
-  margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
-  padding: 8px 12px;
-}
-.temp-hp-label { font-size: 0.64rem; letter-spacing: 1.2px; color: var(--text-faint); margin-right: auto; }
-.temp-hp-controls { display: flex; align-items: center; gap: 6px; }
-.temp-hp-controls .hp-btn { min-width: 44px; min-height: 38px; padding: 0 8px; font-size: 0.85rem; }
-.temp-hp-val { font-size: 1.2rem; font-weight: 800; color: var(--green); min-width: 1.6em; text-align: center; }
-
-/* ====================== DICE / ROLLING ====================== */
-.rollable {
-  cursor: pointer; border-radius: 6px; padding: 1px 5px; transition: background .15s, color .15s;
-  border: 1px dashed transparent;
-}
-.rollable:hover { background: var(--green-glow); border-color: var(--green-deep); color: var(--green); }
-.rollable:active { transform: translateY(1px); }
-.attack-roll-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
-  color: var(--text); font-weight: 700; font-size: 0.78rem; padding: 8px 10px; cursor: pointer;
-  min-height: var(--tap);
-}
-.attack-roll-btn:hover { border-color: var(--green-deep); color: var(--green); }
-.attack-roll-btn .icon { width: 1.1rem; height: 1.1rem; }
-.weapon-rolls { display: flex; gap: 8px; margin-bottom: 10px; }
-.ws-val.rollable { display: inline-block; }
-
-.roll-log {
-  position: fixed; left: 12px; bottom: 12px; z-index: 70;
-  display: flex; flex-direction: column-reverse; gap: 6px;
-  max-width: 280px; pointer-events: none;
-}
-.roll-entry {
-  background: var(--card-hi); border: 1px solid var(--green-deep); border-radius: var(--radius-sm);
-  padding: 8px 12px; box-shadow: var(--shadow-lg); font-size: 0.78rem; color: var(--text);
-  animation: rollIn .2s ease;
-}
-.roll-entry .re-title { font-weight: 800; color: var(--green); margin-bottom: 2px; }
-.roll-entry .re-detail { color: var(--text-dim); font-size: 0.72rem; }
-.roll-entry .re-total { font-size: 1.1rem; font-weight: 800; color: var(--text); margin-left: 6px; }
-@keyframes rollIn { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
-
-.roll-entry.nat20 {
-  border-color: gold; box-shadow: 0 0 16px 2px rgba(255, 215, 0, 0.55), var(--shadow-lg);
-  animation: rollIn .2s ease, natPulse 1s ease-in-out infinite alternate;
-}
-.roll-entry.nat20 .re-total { color: gold; }
-.roll-entry.nat1 { border-color: var(--danger, #c0392b); }
-.roll-entry.nat1 .re-total { color: var(--danger, #c0392b); }
-.roll-entry .re-nat {
-  font-weight: 900; letter-spacing: 1px; text-transform: uppercase; font-size: 0.7rem; margin-bottom: 2px;
-}
-.roll-entry.nat20 .re-nat { color: gold; }
-.roll-entry.nat1 .re-nat { color: var(--danger, #c0392b); }
-@keyframes natPulse {
-  from { box-shadow: 0 0 10px 1px rgba(255, 215, 0, 0.4), var(--shadow-lg); }
-  to { box-shadow: 0 0 22px 4px rgba(255, 215, 0, 0.8), var(--shadow-lg); }
+/* Ammo type -> backpack inventory id */
+function ammoInvId(w) {
+  if (w.category === "handgun") return "handgunAmmo";
+  if (w.category === "bow") return "arrows";
+  if (w.category === "rifle") return "longGunAmmo";
+  if (w.category === "shotgun") return "shotgunAmmo";
+  return null;
 }
 
-@media (max-width: 620px) {
-  .roll-log { bottom: 70px; }
+/* ============================================================
+   4b. DICE & ROLLING
+   ============================================================ */
+function rollDie(sides) { return 1 + Math.floor(Math.random() * sides); }
+
+/* ------------------------------------------------------------
+   Avrae-style dice formula parser & roller.
+   Supports: XdY, + - * /, parentheses, kh/kl, dh/dl, rr/ro/ra,
+   mi/ma, exploding (!), and success counting (>/</=).
+   ------------------------------------------------------------ */
+
+/* Tokenize a formula string into numbers, dice groups, operators and parens. */
+function tokenizeFormula(str) {
+  const tokens = [];
+  // Dice group: NdS followed by any combination of modifiers
+  // kh/kl/dh/dl<N>, rr/ro/ra<cmp><N>, mi/ma<N>, !<cmp><N>, ><N>/<<N>/=<N> (success)
+  const modRe = "(?:(?:k[hl]|d[hl])\\d+|r[ro]?[<>]?\\d+|ra[<>]?\\d+|mi\\d+|ma\\d+|![<>]?\\d*|[<>=]\\d+)";
+  const diceRe = new RegExp("^(\\d*)d(\\d+)((?:" + modRe + ")*)", "i");
+  let i = 0;
+  while (i < str.length) {
+    const ch = str[i];
+    if (/\s/.test(ch)) { i++; continue; }
+    if ("+-*/()".includes(ch)) { tokens.push({ type: "op", value: ch }); i++; continue; }
+    const rest = str.slice(i);
+    const diceMatch = rest.match(diceRe);
+    if (diceMatch) {
+      const n = diceMatch[1] === "" ? 1 : parseInt(diceMatch[1], 10);
+      const sides = parseInt(diceMatch[2], 10);
+      const mods = parseDiceMods(diceMatch[3] || "");
+      tokens.push({ type: "dice", n, sides, mods, raw: diceMatch[0] });
+      i += diceMatch[0].length;
+      continue;
+    }
+    const numMatch = rest.match(/^\d+(\.\d+)?/);
+    if (numMatch) {
+      tokens.push({ type: "num", value: parseFloat(numMatch[0]) });
+      i += numMatch[0].length;
+      continue;
+    }
+    // Unknown character — skip it
+    i++;
+  }
+  return tokens;
 }
 
-/* ====================== ITEM POPUP ====================== */
-.item-popup {
-  position: absolute; z-index: 80; max-width: 260px;
-  background: linear-gradient(170deg, var(--panel-2), var(--panel));
-  border: 1px solid var(--green-deep); border-radius: var(--radius); box-shadow: var(--shadow-lg);
-}
-.item-popup[hidden] { display: none; }
-.item-popup-head {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 12px; border-bottom: 1px solid var(--line-soft); font-weight: 800; color: var(--green);
-}
-.item-popup-body { padding: 10px 12px; font-size: 0.8rem; color: var(--text-dim); line-height: 1.4; }
-
-/* ====================== ROLLS PAGE ====================== */
-.roll-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px;
-  margin-bottom: 10px;
-}
-.roll-card {
-  background: linear-gradient(180deg, var(--card-hi), var(--card));
-  border: 1px solid var(--line); border-radius: var(--radius-sm);
-  padding: 10px; text-align: center;
-}
-.roll-card .rc-name { font-size: 0.7rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.6px; }
-.roll-card .rc-sub { font-size: 0.62rem; color: var(--text-faint); margin-top: 1px; }
-.roll-card .rc-mod {
-  font-size: 1.4rem; font-weight: 800; color: var(--green); margin-top: 4px;
-  display: inline-block; padding: 2px 10px; border-radius: 8px; cursor: pointer;
-}
-.roll-card .rc-mod:hover { background: var(--green-glow); }
-
-.custom-roll { display: flex; gap: 8px; }
-.custom-roll input {
-  flex: 1; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px;
-  color: var(--text); padding: 10px 12px; font-size: 0.95rem; font-family: inherit;
-}
-.custom-roll input:focus { outline: none; border-color: var(--green-deep); box-shadow: 0 0 0 2px var(--green-glow); }
-.custom-roll .btn { white-space: nowrap; }
-
-/* ====================== EQUIP / GENERAL SLOTS ====================== */
-.equip-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 10px; margin-bottom: 18px; }
-.equip-slot {
-  background: linear-gradient(180deg, var(--card-hi), var(--card));
-  border: 1px dashed var(--line); border-radius: var(--radius-sm);
-  padding: 10px; text-align: center;
-}
-.equip-slot.filled { border-style: solid; border-color: var(--green-deep); }
-.equip-slot .es-label { font-size: 0.62rem; letter-spacing: 1px; text-transform: uppercase; color: var(--text-faint); display: flex; align-items: center; justify-content: center; gap: 4px; }
-.equip-slot select {
-  width: 100%; margin-top: 6px; background: var(--bg-2); border: 1px solid var(--line);
-  border-radius: 6px; color: var(--text); padding: 6px; font-size: 0.78rem; min-height: 36px;
-}
-.equip-slot .es-remove {
-  margin-left: auto; background: none; border: none; color: var(--text-faint);
-  cursor: pointer; font-size: 0.8rem; line-height: 1; padding: 0 2px;
-}
-.equip-slot .es-remove:hover { color: var(--danger, #c0392b); }
-.add-slot-btn {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  background: var(--bg-2); border: 1px dashed var(--green-deep); border-radius: var(--radius-sm);
-  color: var(--green); padding: 10px; font-size: 0.72rem; text-transform: uppercase;
-  letter-spacing: 0.6px; cursor: pointer; min-height: 64px;
-}
-.add-slot-btn:hover { background: var(--green-glow); }
-.add-slot-btn .icon { width: 16px; height: 16px; }
-.equip-slot .es-armor-name { margin-top: 6px; font-size: 0.85rem; font-weight: 700; color: var(--text); }
-.equip-slot .es-armor-other { margin-top: 4px; font-size: 0.74rem; color: var(--text-dim); }
-
-.general-slots { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 12px; }
-.gen-slot {
-  min-height: 64px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-2);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 4px; text-align: center; gap: 2px;
-}
-.gen-slot.filled { background: linear-gradient(180deg, var(--card-hi), var(--card)); border-color: var(--green-deep); cursor: pointer; }
-.gen-slot.filled:hover { border-color: var(--green); }
-.gen-slot .gs-icon .icon { width: 20px; height: 20px; }
-.gen-slot .gs-name { font-size: 0.55rem; line-height: 1.1; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.4px; }
-.gen-slot .gs-qty { font-size: 0.7rem; font-weight: 700; color: var(--green); }
-@media (max-width: 480px) { .general-slots { grid-template-columns: repeat(4, 1fr); } }
-
-/* Smaller backpack items */
-.backpack .inv-grid { grid-template-columns: repeat(auto-fill, minmax(96px,1fr)); gap: 8px; }
-.backpack .inv-item { padding: 8px 6px; cursor: pointer; }
-.backpack .inv-icon { width: 1.4rem; height: 1.4rem; }
-.backpack .inv-name { font-size: 0.62rem; min-height: 1.7em; }
-.backpack .inv-qty { font-size: 1.1rem; }
-.backpack .inv-controls .inv-btn { min-height: 32px; font-size: 1rem; }
-
-/* ====================== CRAFTING ====================== */
-.crafting-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 10px; margin-bottom: 10px; }
-.craft-card {
-  background: linear-gradient(180deg, var(--card-hi), var(--card));
-  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; text-align: center;
-}
-.craft-card .cc-name { font-weight: 700; font-size: 0.82rem; color: var(--text); display: flex; align-items: center; justify-content: center; gap: 6px; }
-.craft-card .cc-recipe { font-size: 0.66rem; color: var(--text-faint); margin: 4px 0 8px; }
-.craft-card button {
-  width: 100%; min-height: var(--tap); border-radius: 6px; border: 1px solid var(--green-deep);
-  background: var(--green-glow); color: var(--green); font-weight: 800; cursor: pointer;
-}
-.craft-card button:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--line); background: var(--bg-2); color: var(--text-faint); }
-
-/* ====================== RULES REFERENCE POSITIONING ====================== */
-body[data-active-tab]:not([data-active-tab="character"]) .ref-panel {
-  margin-top: 28px;
+/* Parse the modifier suffix of a dice group (e.g. "kh2rr1mi2") into an ordered list. */
+function parseDiceMods(str) {
+  const mods = [];
+  const re = /(k[hl]|d[hl])(\d+)|(rr|ro|ra)([<>]?)(\d+)|(mi|ma)(\d+)|(!)([<>]?)(\d*)|([<>=])(\d+)/gi;
+  let m;
+  while ((m = re.exec(str))) {
+    if (m[1]) {
+      mods.push({ type: m[1].toLowerCase(), n: parseInt(m[2], 10) });
+    } else if (m[3]) {
+      mods.push({ type: m[3].toLowerCase(), cmp: m[4] || "=", n: parseInt(m[5], 10) });
+    } else if (m[6]) {
+      mods.push({ type: m[6].toLowerCase(), n: parseInt(m[7], 10) });
+    } else if (m[8]) {
+      mods.push({ type: "explode", cmp: m[9] || "=", n: m[10] === "" ? null : parseInt(m[10], 10) });
+    } else if (m[11]) {
+      mods.push({ type: "success", cmp: m[11], n: parseInt(m[12], 10) });
+    }
+  }
+  return mods;
 }
 
-/* ====================== RESOLVE BUTTON / RESTS ====================== */
-.stat-card.resolve-pill { cursor: pointer; }
-.stat-card.resolve-pill:hover { background: var(--green-glow); border-color: var(--green-deep); }
-.rest-controls { position: relative; margin-top: 14px; }
-.rest-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
-.rest-btn .icon { width: 16px; height: 16px; }
-.rest-menu[hidden] { display: none; }
-.rest-menu {
-  position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 30;
-  display: flex; flex-direction: column; gap: 4px;
-  background: linear-gradient(170deg, var(--panel-2), var(--panel));
-  border: 1px solid var(--green-deep); border-radius: var(--radius); box-shadow: var(--shadow-lg);
-  padding: 6px;
+/* Convert tokens into a parts list compatible with rollFormula().
+   Ability tokens (STR/DEX/...) are replaced with the character's modifier
+   before tokenizing, so this stays a thin wrapper for backward compatibility. */
+function parseFormula(expr) {
+  let str = String(expr || "").toUpperCase();
+  ABILITIES.forEach(a => {
+    const re = new RegExp("\\b" + a.toUpperCase() + "\\b", "g");
+    str = str.replace(re, (D.mods[a] >= 0 ? "+" : "") + D.mods[a]);
+  });
+  return tokenizeFormula(str);
 }
-.rest-menu button {
-  display: flex; flex-direction: column; align-items: flex-start; text-align: left;
-  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
-  color: var(--text); padding: 8px 10px; font-size: 0.8rem; font-weight: 700; cursor: pointer;
-}
-.rest-menu button:hover { border-color: var(--green-deep); background: var(--green-glow); }
-.rest-menu .rm-sub { font-size: 0.65rem; font-weight: 400; color: var(--text-faint); margin-top: 2px; }
 
-/* ====================== SILENCER ====================== */
-.silencer-row { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.silencer-btn {
-  display: inline-flex; align-items: center; gap: 6px; font-size: 0.7rem; text-transform: uppercase;
-  letter-spacing: 0.6px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line);
-  background: var(--bg-2); color: var(--text); cursor: pointer;
+function cmpCheck(val, cmp, n) {
+  if (cmp === ">") return val > n;
+  if (cmp === "<") return val < n;
+  return val === n; // "=" or default
 }
-.silencer-btn .icon { width: 14px; height: 14px; }
-.silencer-btn.on { border-color: var(--green-deep); color: var(--green); background: var(--green-glow); }
-.silencer-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.silencer-hint { font-size: 0.62rem; color: var(--text-faint); }
+
+/* Roll a single dice group (n dice of `sides`), applying its modifiers in
+   a sensible order: explode -> reroll (rr/ro/ra) -> min/max clamp -> keep/drop -> success count.
+   Returns { total, dice: [{value, kept, dropped, tags:[...]}], summaryStr } */
+function rollDiceGroup(group) {
+  const { n, sides, mods } = group;
+  const MAX_DICE = 200; // sanity cap on total dice rolled (incl. exploded/rerolled)
+  let dice = [];
+  for (let i = 0; i < Math.min(n, MAX_DICE); i++) {
+    dice.push({ value: rollDie(sides), kept: true, dropped: false, tags: [] });
+  }
+
+  const explodeMod = mods.find(m => m.type === "explode");
+  const rrMods = mods.filter(m => m.type === "rr");
+  const roMod = mods.find(m => m.type === "ro");
+  const raMod = mods.find(m => m.type === "ra");
+  const miMod = mods.find(m => m.type === "mi");
+  const maMod = mods.find(m => m.type === "ma");
+  const khMod = mods.find(m => m.type === "kh");
+  const klMod = mods.find(m => m.type === "kl");
+  const dhMod = mods.find(m => m.type === "dh");
+  const dlMod = mods.find(m => m.type === "dl");
+  const successMod = mods.find(m => m.type === "success");
+
+  // 1. Exploding dice
+  if (explodeMod) {
+    const cmp = explodeMod.cmp;
+    const target = explodeMod.n != null ? explodeMod.n : sides; // default = max value
+    let totalDice = dice.length;
+    let idx = 0;
+    while (idx < dice.length && totalDice < n + 20 && totalDice < MAX_DICE) {
+      const d = dice[idx];
+      if (!d.tags.includes("exploded-from") && cmpCheck(d.value, cmp === "=" ? "=" : cmp, target)) {
+        d.tags.push("exploded");
+        const nd = { value: rollDie(sides), kept: true, dropped: false, tags: ["exploded-from"] };
+        dice.splice(idx + 1, 0, nd);
+        totalDice++;
+      }
+      idx++;
+    }
+  }
+
+  // 2. Reroll: rr (repeat), ro (once), ra (once, keep higher)
+  rrMods.forEach(rm => {
+    let iterations = 0;
+    let changed = true;
+    while (changed && iterations < 100) {
+      changed = false;
+      for (const d of dice) {
+        if (d.dropped) continue;
+        if (cmpCheck(d.value, rm.cmp, rm.n)) {
+          d.tags.push("rerolled");
+          d.value = rollDie(sides);
+          changed = true;
+          iterations++;
+          if (iterations >= 100) break;
+        }
+      }
+    }
+  });
+
+  if (roMod) {
+    dice.forEach(d => {
+      if (d.dropped) return;
+      if (cmpCheck(d.value, roMod.cmp, roMod.n)) {
+        d.tags.push("rerolled");
+        d.value = rollDie(sides);
+      }
+    });
+  }
+
+  if (raMod) {
+    dice.forEach(d => {
+      if (d.dropped) return;
+      if (cmpCheck(d.value, raMod.cmp, raMod.n)) {
+        const newVal = rollDie(sides);
+        if (newVal > d.value) {
+          d.tags.push(`ra(${d.value}->kept ${newVal})`);
+          d.value = newVal;
+        } else {
+          d.tags.push(`ra(kept ${d.value}, discarded ${newVal})`);
+        }
+      }
+    });
+  }
+
+  // 3. Min/Max clamp
+  if (miMod) {
+    dice.forEach(d => {
+      if (d.value < miMod.n) { d.tags.push(`min->${miMod.n}`); d.value = miMod.n; }
+    });
+  }
+  if (maMod) {
+    dice.forEach(d => {
+      if (d.value > maMod.n) { d.tags.push(`max->${maMod.n}`); d.value = maMod.n; }
+    });
+  }
+
+  // 4. Keep/Drop highest/lowest
+  const applyKeepDrop = (mod, keep, highest) => {
+    if (!mod) return;
+    const eligible = dice.map((d, i) => ({ d, i })).filter(o => !o.d.dropped);
+    const sorted = [...eligible].sort((a, b) => highest ? b.d.value - a.d.value : a.d.value - b.d.value);
+    const count = keep ? mod.n : eligible.length - mod.n;
+    const toKeepIdx = new Set(sorted.slice(0, Math.max(0, count)).map(o => o.i));
+    eligible.forEach(o => {
+      if (!toKeepIdx.has(o.i)) {
+        o.d.dropped = true;
+        o.d.kept = false;
+        o.d.tags.push("dropped");
+      }
+    });
+  };
+  if (khMod) applyKeepDrop(khMod, true, true);
+  if (klMod) applyKeepDrop(klMod, true, false);
+  if (dhMod) applyKeepDrop(dhMod, false, true); // drop the N highest -> keep = total - N
+  if (dlMod) applyKeepDrop(dlMod, false, false);
+
+  // 5. Success counting
+  let total;
+  if (successMod) {
+    total = dice.reduce((sum, d) => {
+      if (d.dropped) return sum;
+      return sum + (cmpCheck(d.value, successMod.cmp, successMod.n) ? 1 : 0);
+    }, 0);
+  } else {
+    total = dice.reduce((sum, d) => d.dropped ? sum : sum + d.value, 0);
+  }
+
+  return { total, dice, successMod: !!successMod };
+}
+
+/* Build a human-readable breakdown string for a dice group's roll result. */
+function formatDiceGroup(group, result) {
+  const { dice } = result;
+  const dieStrs = dice.map(d => {
+    let s = String(d.value);
+    if (d.tags.some(t => t === "rerolled")) s = `~~${d.value}~~→reroll`;
+    if (d.tags.some(t => t === "exploded")) s += "!";
+    if (d.tags.some(t => t.startsWith("exploded-from"))) s += "(exploded)";
+    if (d.dropped) s = `~~${s}~~`;
+    return s;
+  });
+  let label = `${group.n}d${group.sides}`;
+  group.mods.forEach(m => {
+    if (m.type === "kh" || m.type === "kl" || m.type === "dh" || m.type === "dl") label += `${m.type}${m.n}`;
+    else if (m.type === "rr") label += `rr${m.cmp !== "=" ? m.cmp : ""}${m.n}`;
+    else if (m.type === "ro") label += `ro${m.cmp !== "=" ? m.cmp : ""}${m.n}`;
+    else if (m.type === "ra") label += `ra${m.cmp !== "=" ? m.cmp : ""}${m.n}`;
+    else if (m.type === "mi") label += `mi${m.n}`;
+    else if (m.type === "ma") label += `ma${m.n}`;
+    else if (m.type === "explode") label += `!${m.cmp !== "=" ? m.cmp : ""}${m.n != null ? m.n : ""}`;
+    else if (m.type === "success") label += `${m.cmp}${m.n}`;
+  });
+  let str = `${label}: [${dieStrs.join(", ")}]`;
+  if (result.successMod) {
+    str += ` = ${result.total} success${result.total === 1 ? "" : "es"}`;
+  } else {
+    const kept = dice.filter(d => !d.dropped);
+    if (kept.length !== dice.length || dice.some(d => d.tags.length)) {
+      str += ` = ${result.total}`;
+    }
+  }
+  return str;
+}
+
+/* Evaluate a token stream (with parentheses & * / + -) into a total + detail breakdown.
+   Returns { total, detail, groups } where groups is per-dice-group roll info (for nat20/1 etc). */
+function rollFormula(parts) {
+  // Recursive-descent over tokens with explicit parenthesis support.
+  let pos = 0;
+  const detailParts = [];
+  const groups = [];
+
+  function peek() { return parts[pos]; }
+
+  function parseExpr() {
+    let val = parseTerm();
+    while (peek() && peek().type === "op" && (peek().value === "+" || peek().value === "-")) {
+      const op = parts[pos++].value;
+      const rhs = parseTerm();
+      val = op === "+" ? val + rhs : val - rhs;
+    }
+    return val;
+  }
+
+  function parseTerm() {
+    let val = parseFactor();
+    while (peek() && peek().type === "op" && (peek().value === "*" || peek().value === "/")) {
+      const op = parts[pos++].value;
+      const rhs = parseFactor();
+      val = op === "*" ? val * rhs : Math.floor(val / rhs);
+    }
+    return val;
+  }
+
+  function parseFactor() {
+    const tok = peek();
+    if (!tok) return 0;
+    if (tok.type === "op" && tok.value === "(") {
+      pos++;
+      const val = parseExpr();
+      if (peek() && peek().type === "op" && peek().value === ")") pos++;
+      return val;
+    }
+    if (tok.type === "op" && (tok.value === "+" || tok.value === "-")) {
+      pos++;
+      const sign = tok.value === "-" ? -1 : 1;
+      return sign * parseFactor();
+    }
+    if (tok.type === "num") {
+      pos++;
+      detailParts.push(detailParts.length === 0 ? String(tok.value) : fmtMod(tok.value));
+      return tok.value;
+    }
+    if (tok.type === "dice") {
+      pos++;
+      const result = rollDiceGroup(tok);
+      groups.push({ group: tok, result });
+      detailParts.push(formatDiceGroup(tok, result));
+      return result.total;
+    }
+    return 0;
+  }
+
+  const total = parseExpr();
+  let detail = detailParts.join(" ");
+  if (!detail) detail = "0";
+  return { total, detail, groups };
+}
+
+let rollLogTimer = 0;
+function addRollLog(title, detail, total, natType) {
+  const log = document.getElementById("roll-log");
+  const entry = document.createElement("div");
+  entry.className = "roll-entry" + (natType ? ` ${natType}` : "");
+  const banner = natType === "nat20" ? `<div class="re-nat">★ NATURAL 20! ★</div>`
+    : natType === "nat1" ? `<div class="re-nat">NATURAL 1...</div>` : "";
+  entry.innerHTML = `${banner}<div class="re-title">${esc(title)}<span class="re-total">${total}</span></div><div class="re-detail">${esc(detail)}</div>`;
+  log.appendChild(entry);
+  while (log.children.length > 5) log.removeChild(log.firstChild);
+  setTimeout(() => entry.remove(), natType ? 12000 : 8000);
+}
+
+/* Roll a formula string (e.g. weapon damage "2d8 + DEX") and log it */
+function rollDamage(formula, label) {
+  const parts = parseFormula(formula);
+  if (!parts.length) { toast("Nothing to roll."); return; }
+  const { total, detail } = rollFormula(parts);
+  addRollLog(label, detail, total);
+}
+
+/* Roll d20 + a flat modifier and log it */
+function rollD20(modifier, label) {
+  const die = rollDie(20);
+  const total = die + modifier;
+  const natType = die === 20 ? "nat20" : die === 1 ? "nat1" : null;
+  addRollLog(label, `d20 [${die}] ${fmtMod(modifier)}`, total, natType);
+}
+
+/* ============================================================
+   5. RENDER
+   ============================================================ */
+let D = derive();  // cached derived snapshot, refreshed in renderAll()
+
+function renderAll() {
+  D = derive();
+  renderSummary();
+  renderCharacterTab();
+  renderActionsDashboard();
+  renderPerks();
+  renderProficiencies();
+  renderStatuses();
+  renderWeapons();
+  renderBackpack();
+  renderSkillTrees();
+  renderRollsTab();
+  renderNotes();
+}
+
+/* ---- Summary bar ---- */
+function renderSummary() {
+  document.getElementById("summary-name").value = character.name;
+  document.getElementById("summary-level").textContent = character.level;
+  const bg = GAME_DATA.backgrounds[character.background];
+  document.getElementById("summary-bg").textContent = bg ? `${bg.icon} ${bg.name}` : "No Background";
+
+  const hpVal = `${character.currentHP}/${D.maxHp}` + (character.tempHP > 0 ? ` +${character.tempHP}` : "");
+  const stats = [
+    { lbl: "HP", val: hpVal, cls: "hp" },
+    { lbl: "AC", val: D.ac },
+    { lbl: "Init", val: fmtMod(D.initiative) + (D.flags.initAdvantage ? "▲" : "") },
+    { lbl: "Prof", val: fmtMod(D.pb) },
+    { lbl: "Speed", val: D.speed + "ft" },
+    { lbl: "AP", val: D.apAvailable, cls: "ap" },
+    { lbl: "Resolve", val: `${D.resolveCurrent}/${D.resolveMax}`, cls: "ap resolve-pill", id: "summary-resolve" },
+    { lbl: "Mnvr DC", val: D.maneuverDC },
+  ];
+  document.getElementById("summary-stats").innerHTML = stats.map(s =>
+    `<div class="stat-pill ${s.cls || ""}" ${s.id ? `id="${s.id}"` : ""}><span class="sp-val">${s.val}</span><span class="sp-lbl">${s.lbl}</span></div>`
+  ).join("");
+
+  // Status chips
+  const statusEl = document.getElementById("summary-status");
+  if (character.statuses.length) {
+    statusEl.innerHTML = character.statuses.map(s => `<span class="chip ${statusCls(s)}">${esc(s)}</span>`).join("");
+  } else {
+    statusEl.innerHTML = `<span class="chip empty">None</span>`;
+  }
+
+  // Perks chips (background fixed + chosen)
+  const perkChips = [];
+  if (bg) bg.perks.forEach(p => perkChips.push(perkLabel(p)));
+  character.perks.forEach(p => perkChips.push(perkLabel(p)));
+  document.getElementById("summary-perks").innerHTML = perkChips.length
+    ? perkChips.map(t => `<span class="chip green">${esc(t)}</span>`).join("")
+    : `<span class="chip empty">None</span>`;
+}
+
+function statusCls(s) {
+  const found = GAME_DATA.statusPresets.find(p => p.label === s);
+  return found ? found.cls : "";
+}
+function perkLabel(p) {
+  const def = GAME_DATA.survivorPerks[p.type];
+  const lbl = def ? def.label : p.type;
+  return p.choice ? `${lbl}: ${p.choice}` : lbl;
+}
+
+/* ---- Character tab ---- */
+function renderCharacterTab() {
+  // selects
+  const bgSel = document.getElementById("char-background");
+  if (!bgSel.dataset.built) {
+    bgSel.innerHTML = `<option value="">— Choose Background —</option>` +
+      Object.values(GAME_DATA.backgrounds).map(b => `<option value="${b.id}">${b.icon} ${b.name}</option>`).join("");
+    bgSel.dataset.built = "1";
+  }
+  bgSel.value = character.background;
+
+  const lvlSel = document.getElementById("char-level");
+  if (!lvlSel.dataset.built) {
+    lvlSel.innerHTML = Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}">Level ${i + 1}</option>`).join("");
+    lvlSel.dataset.built = "1";
+  }
+  lvlSel.value = character.level;
+
+  document.getElementById("char-name").value = character.name;
+
+  // background callout
+  const callout = document.getElementById("background-perk-callout");
+  const bg = GAME_DATA.backgrounds[character.background];
+  if (bg) {
+    callout.classList.remove("empty");
+    callout.innerHTML = `<strong>${bg.icon} ${bg.name}</strong> — <em>${bg.flavor}</em><br>
+      <strong>${bg.backgroundPerk.name}:</strong> ${bg.backgroundPerk.dash ? bg.backgroundPerk.dash[0].desc : ""}`;
+  } else {
+    callout.classList.add("empty");
+    callout.innerHTML = "";
+  }
+
+  // HP
+  document.getElementById("hp-current").textContent = character.currentHP;
+  document.getElementById("hp-max").textContent = D.maxHp;
+  const pct = Math.max(0, Math.min(100, (character.currentHP / D.maxHp) * 100));
+  const fill = document.getElementById("hp-bar-fill");
+  fill.style.width = pct + "%";
+  fill.className = "hp-bar-fill" + (pct <= 25 ? " crit" : pct <= 50 ? " low" : "");
+
+  // Temp HP
+  document.getElementById("temp-hp-val").textContent = character.tempHP || 0;
+
+  // Death saves
+  renderDeathSaves();
+
+  // derived stat cards
+  const cards = [
+    { lbl: "Armor Class", val: D.ac, accent: true },
+    { lbl: "Initiative", val: fmtMod(D.initiative) + (D.flags.initAdvantage ? " ▲" : ""), accent: true },
+    { lbl: "Proficiency", val: fmtMod(D.pb) },
+    { lbl: "Movement", val: D.speed + " ft" },
+    { lbl: "Available AP", val: D.apAvailable, accent: true },
+    { lbl: "Resolve", val: `${D.resolveCurrent} / ${D.resolveMax}`, id: "char-resolve-card", cls: "resolve-pill", title: "Click to spend, right-click to restore" },
+    { lbl: "Maneuver DC", val: D.maneuverDC },
+    { lbl: "Max HP", val: D.maxHp },
+  ];
+  document.getElementById("char-stat-grid").innerHTML = cards.map(c =>
+    `<div class="stat-card ${c.accent ? "accent" : ""} ${c.cls || ""}" ${c.id ? `id="${c.id}"` : ""} ${c.title ? `title="${esc(c.title)}"` : ""}><div class="sc-val">${c.val}</div><div class="sc-lbl">${c.lbl}</div></div>`
+  ).join("");
+
+  // ability scores
+  document.getElementById("ability-grid").innerHTML = ABILITIES.map(a => {
+    const m = mod(character.abilities[a]);
+    return `<div class="ability-card">
+      <div class="ab-name">${ABILITY_NAMES[a]}</div>
+      <div class="ab-mod rollable" data-roll-ability="${a}" title="Roll d20 ${fmtMod(m)}">${fmtMod(m)}</div>
+      <input type="number" min="1" max="20" value="${character.abilities[a]}" data-ability="${a}" />
+    </div>`;
+  }).join("");
+}
+
+function renderDeathSaves() {
+  const block = document.getElementById("death-save-block");
+  if (character.currentHP > 0) {
+    block.hidden = true;
+    return;
+  }
+  if (!character.deathSaves) character.deathSaves = { success: 0, fail: 0 };
+  const ds = character.deathSaves;
+  block.hidden = false;
+  let status = "Downed";
+  if (ds.fail >= 3) status = "Dead";
+  else if (ds.success >= 3) status = "Stable";
+  document.getElementById("ds-status").textContent = status;
+  document.getElementById("ds-success-pips").innerHTML =
+    Array.from({ length: 3 }, (_, i) => `<span class="ds-pip success ${i < ds.success ? "filled" : ""}"></span>`).join("");
+  document.getElementById("ds-fail-pips").innerHTML =
+    Array.from({ length: 3 }, (_, i) => `<span class="ds-pip fail ${i < ds.fail ? "filled" : ""}"></span>`).join("");
+  const rollBtn = document.getElementById("ds-roll-btn");
+  rollBtn.hidden = (status !== "Downed");
+}
+
+/* ---- Actions dashboard ---- */
+function renderActionsDashboard() {
+  const cols = [
+    { key: "action", cls: "act", icon: "attack", label: "Actions" },
+    { key: "bonus", cls: "bonus", icon: "icon-ap", label: "Bonus Actions" },
+    { key: "reaction", cls: "react", icon: "icon-ac", label: "Reactions" },
+    { key: "passive", cls: "pass", icon: "icon-resolve-pb", label: "Passive Effects" },
+  ];
+  document.getElementById("actions-dashboard").innerHTML = cols.map(col => {
+    const list = D.dashboard[col.key] || [];
+    const body = list.length
+      ? list.map(e => `<div class="ability">
+            <div class="ab-top"><span class="ab-title">${esc(e.name)}</span><span class="ab-src">${esc(e.src)}</span></div>
+            <div class="ab-desc">${esc(e.desc)}</div>
+          </div>`).join("")
+      : `<div class="empty-note">Nothing yet — invest in trees, perks &amp; gear.</div>`;
+    return `<div class="action-col ${col.cls}">
+        <div class="action-col-head">${icon(col.icon)} ${col.label}<span class="count">${list.length}</span></div>
+        <div class="action-col-body">${body}</div>
+      </div>`;
+  }).join("");
+}
+
+/* ---- Survivor Perks ---- */
+function renderPerks() {
+  const list = document.getElementById("perks-list");
+  const bg = GAME_DATA.backgrounds[character.background];
+  let html = "";
+
+  if (bg) {
+    bg.perks.forEach(p => {
+      const def = GAME_DATA.survivorPerks[p.type];
+      html += `<div class="perk-card fixed">
+        <div><div class="pk-name">${esc(perkLabel(p))}</div>
+        <div class="pk-desc">${esc(def ? def.effect(p.choice) : "")}</div>
+        <div class="pk-tag">From ${esc(bg.name)} background</div></div>
+      </div>`;
+    });
+  }
+  character.perks.forEach((p, idx) => {
+    const def = GAME_DATA.survivorPerks[p.type];
+    html += `<div class="perk-card">
+      <div><div class="pk-name">${esc(perkLabel(p))}</div>
+      <div class="pk-desc">${esc(def ? def.effect(p.choice) : "")}</div>
+      <div class="pk-tag">Chosen perk</div></div>
+      <button class="icon-btn" data-remove-perk="${idx}" title="Remove">✕</button>
+    </div>`;
+  });
+  if (!html) html = `<div class="prof-empty">No perks yet. Choose a background and add survivor perks below.</div>`;
+  list.innerHTML = html;
+
+  // Adder
+  const adder = document.getElementById("perk-adder");
+  const opts = Object.values(GAME_DATA.survivorPerks).map(d => `<option value="${d.type}">${d.label}</option>`).join("");
+  adder.innerHTML = `
+    <label class="field"><span class="field-label">Add Survivor Perk</span>
+      <select id="perk-type">${opts}</select></label>
+    <label class="field" id="perk-choice-wrap"><span class="field-label">Choice</span>
+      <select id="perk-choice"></select></label>
+    <label class="field" id="perk-choice2-wrap" style="display:none"><span class="field-label">Point 2</span>
+      <select id="perk-choice2"></select></label>
+    <button class="btn accent" id="perk-add-btn">+ Add</button>`;
+  updatePerkChoiceField();
+  document.getElementById("perk-type").addEventListener("change", updatePerkChoiceField);
+  document.getElementById("perk-add-btn").addEventListener("click", addPerk);
+}
+
+function updatePerkChoiceField() {
+  const type = document.getElementById("perk-type").value;
+  const def = GAME_DATA.survivorPerks[type];
+  const wrap = document.getElementById("perk-choice-wrap");
+  const sel = document.getElementById("perk-choice");
+  const sel2wrap = document.getElementById("perk-choice2-wrap");
+  const sel2 = document.getElementById("perk-choice2");
+  if (def && def.needsChoice) {
+    wrap.style.display = "";
+    const opts = def.choices.map(c => `<option value="${c}">${ABILITY_NAMES[c] || c}</option>`).join("");
+    sel.innerHTML = opts;
+    // Ability Improvement grants two +1 picks at once — show a second choice box.
+    if (type === "abilityImprovement") {
+      wrap.querySelector(".field-label").textContent = "Point 1";
+      sel2wrap.style.display = "";
+      sel2.innerHTML = opts;
+    } else {
+      wrap.querySelector(".field-label").textContent = "Choice";
+      sel2wrap.style.display = "none";
+      sel2.innerHTML = "";
+    }
+  } else {
+    wrap.style.display = "none";
+    sel.innerHTML = "";
+    sel2wrap.style.display = "none";
+    sel2.innerHTML = "";
+  }
+}
+
+function addPerk() {
+  const type = document.getElementById("perk-type").value;
+  const def = GAME_DATA.survivorPerks[type];
+
+  // Ability Improvement: two +1 picks added together as two separate entries.
+  if (type === "abilityImprovement") {
+    if (character.perks.some(p => p.type === "abilityImprovement")) {
+      toast("Ability Improvement already taken."); return;
+    }
+    const c1 = document.getElementById("perk-choice").value;
+    const c2 = document.getElementById("perk-choice2").value;
+    character.perks.push({ type, choice: c1 });
+    character.perks.push({ type, choice: c2 });
+    save(); renderAll();
+    toast(`Added Ability Improvement: +1 ${ABILITY_NAMES[c1] || c1}, +1 ${ABILITY_NAMES[c2] || c2}`);
+    return;
+  }
+
+  const choice = def.needsChoice ? document.getElementById("perk-choice").value : null;
+
+  // enforce limits
+  const count = character.perks.filter(p => p.type === type).length;
+  if (def.max && count >= def.max) { toast(`${def.label}: max ${def.max} reached.`); return; }
+  if (!def.repeatable && !def.max && count >= 1) { toast(`${def.label} already taken.`); return; }
+  if (choice && character.perks.some(p => p.type === type && p.choice === choice)) {
+    toast(`Already have ${def.label}: ${choice}.`); return;
+  }
+
+  character.perks.push({ type, choice });
+  save(); renderAll();
+  toast(`Added ${perkLabel({ type, choice })}`);
+}
+
+/* ---- Proficiencies ---- */
+function renderProficiencies() {
+  const bg = GAME_DATA.backgrounds[character.background];
+  const groups = {
+    "Weapon Training": [],
+    "Cross-Training": [],
+    "Saving Throw Proficiencies": [],
+    "Hazard Resistances": [],
+  };
+  const add = (type, p) => {
+    const def = GAME_DATA.survivorPerks[type];
+    if (!def) return;
+    const entry = { name: perkLabel(p), eff: def.effect(p.choice) };
+    if (type === "weapon") groups["Weapon Training"].push(entry);
+    else if (type === "skill") groups["Cross-Training"].push(entry);
+    else if (type === "steel") groups["Saving Throw Proficiencies"].push(entry);
+    else if (type === "acclimated") groups["Hazard Resistances"].push(entry);
+    else if (type === "lightfeet") {/* movement, not a proficiency */}
+  };
+
+  if (bg) bg.perks.forEach(p => add(p.type, p));
+  character.perks.forEach(p => add(p.type, p));
+
+  const order = ["Weapon Training", "Cross-Training", "Saving Throw Proficiencies", "Hazard Resistances"];
+  document.getElementById("proficiencies").innerHTML = order.map(g => {
+    const items = groups[g];
+    const body = items.length
+      ? items.map(it => `<div class="prof-item"><div class="pi-name">${esc(it.name)}</div><div class="pi-eff">${esc(it.eff)}</div></div>`).join("")
+      : `<div class="prof-empty">None yet.</div>`;
+    return `<div class="prof-group"><h3>${g}</h3>${body}</div>`;
+  }).join("");
+}
+
+/* ---- Status effects ---- */
+function renderStatuses() {
+  const el = document.getElementById("status-active");
+  el.innerHTML = character.statuses.length
+    ? character.statuses.map((s, i) => `<span class="chip ${statusCls(s)}" data-remove-status="${i}">${esc(s)}<span class="x">✕</span></span>`).join("")
+    : `<span class="chip empty">No active status effects</span>`;
+
+  const adder = document.getElementById("status-adder");
+  adder.innerHTML = GAME_DATA.statusPresets
+    .filter(p => !character.statuses.includes(p.label))
+    .map(p => `<button class="status-preset" data-add-status="${esc(p.label)}">+ ${esc(p.label)}</button>`).join("")
+    + `<button class="status-preset" id="status-custom">+ Custom…</button>`;
+}
+
+/* ---- Weapons ---- */
+function renderWeapons() {
+  const grid = document.getElementById("weapons-grid");
+  if (!character.weapons.length) {
+    grid.innerHTML = `<div class="empty-state">No weapons yet. Tap “+ Add Weapon” to arm up.</div>`;
+    return;
+  }
+  grid.innerHTML = character.weapons.map(w => {
+    const bonuses = weaponBonuses(w);
+    const hasAmmo = w.maxAmmo > 0 || (w.ammoType && w.ammoType.trim());
+    const effectiveSound = w.silenced ? "Quiet" : (w.sound || "");
+    const soundCls = "sound " + effectiveSound.toLowerCase().replace(/\s+/g, "");
+    const canSilence = w.maxAmmo > 0 && w.category !== "rifle" && w.category !== "shotgun"; // handguns/bows only
+    const haveSilencer = (character.inventory.silencer || 0) > 0;
+    return `<div class="weapon-card cat-${w.category}">
+      <div class="weapon-head">
+        <div><div class="weapon-name">${esc(w.name || "Unnamed")}</div>
+          <div class="weapon-type">${WEAPON_TYPE_LABEL[w.category] || w.category}</div></div>
+        <div class="weapon-actions">
+          <button class="icon-btn" data-edit-weapon="${w.id}" title="Edit">✎</button>
+          <button class="icon-btn" data-del-weapon="${w.id}" title="Remove">✕</button>
+        </div>
+      </div>
+
+      <div class="weapon-rolls">
+        <button class="attack-roll-btn" data-roll-attack="${w.id}">${icon("attack")} Attack ${fmtMod(weaponToHitMod(w))}</button>
+      </div>
+
+      <div class="weapon-stats">
+        <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val rollable" data-roll-damage="${w.id}" title="Click to roll">${esc(w.damage || "—")}</div></div>
+        <div class="wstat"><div class="ws-lbl">Range</div><div class="ws-val">${esc(w.range || "—")}</div></div>
+        <div class="wstat ${soundCls}"><div class="ws-lbl">Sound</div><div class="ws-val">${esc(effectiveSound || "—")}</div></div>
+        <div class="wstat"><div class="ws-lbl">Ammo Type</div><div class="ws-val">${esc(w.ammoType || "—")}</div></div>
+      </div>
+
+      ${canSilence ? `
+        <div class="silencer-row">
+          <button class="silencer-btn ${w.silenced ? "on" : ""}" data-toggle-silencer="${w.id}" ${(!w.silenced && !haveSilencer) ? "disabled" : ""}>
+            ${icon("inv-silencer")} ${w.silenced ? "Remove Silencer" : "Attach Silencer"}
+          </button>
+          ${!w.silenced && !haveSilencer ? `<span class="silencer-hint">Need a Silencer in your backpack</span>` : ""}
+        </div>` : ""}
+
+      <div class="ammo-track ${hasAmmo ? "" : "none"}">
+        <div class="ammo-top">
+          <span class="ammo-label">Current Ammo</span>
+          <span class="ammo-count"><span class="cur">${w.currentAmmo || 0}</span><span class="max"> / ${w.maxAmmo || 0}</span></span>
+        </div>
+        <div class="ammo-controls">
+          <button class="ammo-btn minus" data-ammo="${w.id}:-1">−</button>
+          <button class="ammo-btn plus" data-ammo="${w.id}:1">＋</button>
+          <button class="ammo-btn reload" data-ammo="${w.id}:reload">RELOAD</button>
+        </div>
+      </div>
+
+      ${w.upgrades && w.upgrades.length ? `
+        <div class="weapon-section-label">Upgrades</div>
+        <div class="upgrade-chips">${w.upgrades.map(u => `<span class="chip warn">${esc(u)}</span>`).join("")}</div>` : ""}
+
+      ${bonuses.length ? `
+        <div class="weapon-section-label">Active Bonuses</div>
+        <div class="bonus-list">${bonuses.map(b => `<div class="bonus-item"><div class="bi-name">${esc(b.name)}</div><div class="bi-desc">${esc(b.desc)}</div></div>`).join("")}</div>` : ""}
+
+      ${w.notes ? `<div class="weapon-notes">${esc(w.notes)}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+/* ---- Backpack ---- */
+const GENERAL_SLOTS_DEFAULT = 12;
+const MAX_BACKPACK_SLOTS = 20;
+const MAX_HOLSTERS = 2;
+const MAX_WEAPON_SLOTS = 3;
+const HOLSTER_CATS = ["handgun"];
+const WEAPON_SLOT_CATS = ["rifle", "shotgun", "bow", "blunt", "melee", "improvised"];
+
+function ensureEquipArrays() {
+  if (!Array.isArray(character.weaponSlots)) character.weaponSlots = [null];
+  if (!Array.isArray(character.holsters)) character.holsters = [null];
+}
+
+function equipSlotHtml(group, idx, wid, cats, iconName, labelWord) {
+  const w = character.weapons.find(x => x.id === wid);
+  const choices = character.weapons.filter(x => cats.includes(x.category));
+  const opts = [`<option value="">— Empty —</option>`]
+    .concat(choices.map(x => `<option value="${x.id}" ${x.id === wid ? "selected" : ""}>${esc(x.name || "Unnamed")}</option>`));
+  return `<div class="equip-slot ${w ? "filled" : ""}">
+    <div class="es-label">${icon(iconName)} ${labelWord} ${idx + 1}
+      <button class="es-remove" data-remove-slot="${group}:${idx}" title="Remove slot">✕</button></div>
+    <select data-equip-slot="${group}:${idx}">${opts.join("")}</select>
+  </div>`;
+}
+
+function renderEquipSlots() {
+  ensureEquipArrays();
+  const root = document.getElementById("equip-slots");
+  let html = "";
+  character.weaponSlots.forEach((wid, i) => { html += equipSlotHtml("weapon", i, wid, WEAPON_SLOT_CATS, "slot-weapon", "Weapon Slot"); });
+  if (character.weaponSlots.length < MAX_WEAPON_SLOTS)
+    html += `<button class="add-slot-btn" data-add-slot="weapon">${icon("slot-weapon")} + Add Weapon Slot</button>`;
+  character.holsters.forEach((wid, i) => { html += equipSlotHtml("holster", i, wid, HOLSTER_CATS, "slot-holster", "Holster"); });
+  if (character.holsters.length < MAX_HOLSTERS)
+    html += `<button class="add-slot-btn" data-add-slot="holster">${icon("slot-holster")} + Add Holster</button>`;
+
+  if (character.armor) {
+    const a = character.armor;
+    html += `<div class="equip-slot filled">
+      <div class="es-label">${icon("slot-holster")} Armor
+        <button class="es-remove" data-remove-armor title="Remove armor">✕</button></div>
+      <div class="es-armor-name">${esc(a.type || "Armor")} (AC ${a.acBonus >= 0 ? "+" : ""}${a.acBonus || 0})</div>
+      ${a.other ? `<div class="es-armor-other">${esc(a.other)}</div>` : ""}
+    </div>`;
+  } else {
+    html += `<button class="add-slot-btn" data-add-slot="armor">${icon("slot-holster")} + Add Armor</button>`;
+  }
+  root.innerHTML = html;
+}
+
+/* Total backpack slot capacity (configurable, default 12, max 20). */
+function backpackCap() {
+  if (typeof character.backpackSlots !== "number") character.backpackSlots = GENERAL_SLOTS_DEFAULT;
+  return Math.max(GENERAL_SLOTS_DEFAULT, Math.min(MAX_BACKPACK_SLOTS, character.backpackSlots));
+}
+
+/* Count how many backpack slots are currently occupied (each stack = 1 slot). */
+function usedBackpackSlots() {
+  const stack3 = !!(D && D.flags && D.flags.craftedStack3);
+  let used = 0;
+  GAME_DATA.inventory.flatMap(g => g.items).forEach(it => {
+    const qty = character.inventory[it.id] || 0;
+    if (qty > 0) used += Math.ceil(qty / stackMax(it, stack3));
+  });
+  if (Array.isArray(character.customItems)) {
+    character.customItems.forEach(it => {
+      const qty = it.qty || 0;
+      if (qty > 0) used += Math.ceil(qty / stackMax(it, stack3));
+    });
+  }
+  return used;
+}
+
+/* Returns true if a NEW item type/stack can be added (i.e. there's a free slot). */
+function hasFreeBackpackSlot() {
+  return usedBackpackSlots() < backpackCap();
+}
+
+function renderBackpack() {
+  renderEquipSlots();
+
+  const stack3 = !!(D && D.flags && D.flags.craftedStack3);
+  const cap = backpackCap();
+  const filledItems = GAME_DATA.inventory.flatMap(g => g.items).filter(it => (character.inventory[it.id] || 0) > 0);
+  // Build one slot per stack (items overflow into additional slots when over their stack max).
+  const cells = [];
+  filledItems.forEach(it => {
+    let remaining = character.inventory[it.id] || 0;
+    const max = stackMax(it, stack3);
+    while (remaining > 0) {
+      const inThis = Math.min(max, remaining);
+      remaining -= inThis;
+      cells.push(`<div class="gen-slot filled" data-item-info="${it.id}">
+        <span class="gs-icon">${icon(it.icon)}</span>
+        <div class="gs-name">${esc(it.name)}</div>
+        <div class="gs-qty">${inThis}/${max}</div>
+      </div>`);
+    }
+  });
+  if (Array.isArray(character.customItems)) {
+    character.customItems.forEach(it => {
+      let remaining = it.qty || 0;
+      const max = stackMax(it, stack3);
+      while (remaining > 0) {
+        const inThis = Math.min(max, remaining);
+        remaining -= inThis;
+        cells.push(`<div class="gen-slot filled" data-item-info="${esc(it.id)}">
+          <span class="gs-icon">${icon("inv-medkit")}</span>
+          <div class="gs-name">${esc(it.name)}</div>
+          <div class="gs-qty">${inThis}/${max}</div>
+        </div>`);
+      }
+    });
+  }
+  const usedSlots = cells.length;
+  while (cells.length < cap) cells.push(`<div class="gen-slot"></div>`);
+  document.getElementById("general-slots").innerHTML = cells.slice(0, cap).join("");
+
+  const root = document.getElementById("backpack");
+  let html = GAME_DATA.inventory.map(group => {
+    const items = group.items.map(it => {
+      const qty = character.inventory[it.id] || 0;
+      return `<div class="inv-item ${qty > 0 ? "has-qty" : "zero"}" data-item-info="${it.id}">
+        <span class="inv-icon">${icon(it.icon)}</span>
+        <div class="inv-name">${esc(it.name)}</div>
+        <div class="inv-qty">${qty}</div>
+        <div class="inv-controls">
+          <button class="inv-btn minus" data-inv="${it.id}:-1">−</button>
+          <button class="inv-btn plus" data-inv="${it.id}:1">＋</button>
+        </div>
+        ${it.recipe ? `<div class="inv-recipe">${esc(it.recipe)}</div>` : ""}
+      </div>`;
+    }).join("");
+    return `<div class="inv-cat">
+      <div class="inv-cat-head"><span class="ic-icon">${groupIcon(group.group)}</span><h3>${esc(group.group)}</h3></div>
+      <div class="inv-grid">${items}</div>
+    </div>`;
+  }).join("");
+
+  // Custom items rendered in the main backpack listing alongside normal items.
+  if (!Array.isArray(character.customItems)) character.customItems = [];
+  if (character.customItems.length) {
+    const customCards = character.customItems.map(it => `
+      <div class="inv-item has-qty" data-item-info="${esc(it.id)}">
+        <span class="inv-icon">${icon("inv-medkit")}</span>
+        <div class="inv-name">${esc(it.name)}</div>
+        <div class="inv-qty">${it.qty}</div>
+        <div class="inv-controls">
+          <button class="inv-btn minus" data-custom-qty="${esc(it.id)}:-1">−</button>
+          <button class="inv-btn plus" data-custom-qty="${esc(it.id)}:1">＋</button>
+          <button class="inv-btn" data-custom-edit="${esc(it.id)}">✎</button>
+          <button class="inv-btn" data-custom-del="${esc(it.id)}">✕</button>
+        </div>
+        ${it.desc ? `<div class="inv-recipe">${esc(it.desc)}</div>` : ""}
+      </div>`).join("");
+    html += `<div class="inv-cat">
+      <div class="inv-cat-head"><span class="ic-icon">${groupIcon("Custom")}</span><h3>Custom Items</h3></div>
+      <div class="inv-grid">${customCards}</div>
+    </div>`;
+  }
+  root.innerHTML = html;
+
+  document.getElementById("slot-counter").textContent = `Slots used: ${Math.min(usedSlots, cap)} / ${cap}`;
+
+  renderCrafting();
+}
+
+/* Max stack size per item: materials 5, ammo 10, crafted 2 (3 with Efficient Workflow). */
+function stackMax(it, stack3) {
+  if (it.craft || it.id === "medkit") return stack3 ? 3 : 2;
+  if (/Ammo|arrows/i.test(it.id)) return 10;
+  return 5;
+}
+
+function groupIcon(name) {
+  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : "inv-medkit");
+}
+
+/* ---- Crafting ---- */
+function renderCrafting() {
+  const root = document.getElementById("crafting");
+  const craftables = GAME_DATA.invById ? GAME_DATA.inventory.flatMap(g => g.items).filter(it => it.craft) : [];
+  root.innerHTML = craftables.map(it => {
+    const have = (id, n) => (character.inventory[id] || 0) >= n;
+    const canCraft = Object.entries(it.craft).every(([id, n]) => have(id, n));
+    return `<div class="craft-card">
+      <div class="cc-name">${icon(it.icon)} ${esc(it.name)}</div>
+      <div class="cc-recipe">${esc(it.recipe)}</div>
+      <button data-craft="${it.id}" ${canCraft ? "" : "disabled"}>Craft</button>
+    </div>`;
+  }).join("");
+}
+
+
+/* ---- Skill trees ---- */
+function renderSkillTrees() {
+  document.getElementById("ap-available").textContent = D.apAvailable;
+  document.getElementById("ap-spent").textContent = D.apSpent;
+  document.getElementById("ap-total").textContent = D.apTotal;
+
+  // group by category
+  const cats = {};
+  Object.values(GAME_DATA.skillTrees).forEach(t => { (cats[t.category] = cats[t.category] || []).push(t); });
+
+  const root = document.getElementById("skill-trees");
+  let html = "";
+  Object.keys(cats).forEach(cat => {
+    html += `<div class="tree-category-label" style="grid-column:1/-1">${esc(cat)}</div>`;
+    cats[cat].forEach(tree => { html += renderTree(tree); });
+  });
+  root.innerHTML = html;
+}
+
+function renderTree(tree) {
+  const unlocked = character.unlocked[tree.id] || 0; // count of tiers unlocked
+  const tiers = tree.tiers.map((tier, i) => {
+    const isUnlocked = i < unlocked;
+    const isNext = i === unlocked;
+    const canAfford = D.apAvailable >= tier.cost;
+    const available = isNext && canAfford;
+    const isHighestUnlocked = isUnlocked && i === unlocked - 1;
+
+    let stateCls, statusText;
+    if (isUnlocked) {
+      stateCls = "unlocked";
+      statusText = isHighestUnlocked ? "✓ Unlocked — tap to refund" : "✓ Unlocked";
+    } else if (isNext) {
+      stateCls = "locked" + (canAfford ? "" : " unavailable");
+      statusText = canAfford ? `Tap to unlock (${tier.cost} AP)` : `Need ${tier.cost} AP`;
+    } else {
+      stateCls = "locked unavailable";
+      statusText = `Requires Tier ${roman(i)}`;
+    }
+
+    const roman_ = roman(i + 1);
+    const clickable = (isNext && canAfford) || isHighestUnlocked;
+    return `<div class="tier ${stateCls}">
+      <div class="tier-card" ${clickable ? `data-tier="${tree.id}:${i}"` : ""}>
+        <div class="tier-top">
+          <span class="tier-name"><span class="tier-roman">${roman_} · </span>${esc(tier.name)}</span>
+          <span class="tier-cost">${tier.cost} AP</span>
+        </div>
+        <div class="tier-desc">${esc(tier.desc)}</div>
+        <div class="tier-status">${statusText}</div>
+      </div>
+    </div>`;
+  }).join("");
+
+  return `<div class="tree-card">
+    <div class="tree-title">${esc(tree.name)}</div>
+    <div class="tree-flavor">${esc(tree.flavor)}</div>
+    ${tiers}
+  </div>`;
+}
+
+function roman(n) { return ["I", "II", "III", "IV"][n - 1] || n; }
+
+/* ---- Notes ---- */
+function renderNotes() {
+  const root = document.getElementById("notes-list");
+  if (!character.notes.length) {
+    root.innerHTML = `<div class="empty-state">No notes yet. Track NPCs, safehouses, and objectives here.</div>`;
+    return;
+  }
+  root.innerHTML = character.notes.map(n => `
+    <div class="note-card ${n.collapsed ? "collapsed" : ""}" data-note="${n.id}">
+      <div class="note-head">
+        <span class="note-arrow" data-note-toggle="${n.id}">▾</span>
+        <input type="text" value="${esc(n.title)}" placeholder="Note title…" data-note-title="${n.id}" />
+        <button class="icon-btn" data-note-del="${n.id}" title="Delete">✕</button>
+      </div>
+      <div class="note-body">
+        <textarea placeholder="Write here…" data-note-body="${n.id}">${esc(n.body)}</textarea>
+      </div>
+    </div>`).join("");
+}
+
+/* ---- Rolls tab ---- */
+function renderRollsTab() {
+  document.getElementById("roll-abilities").innerHTML = ABILITIES.map(a => `
+    <div class="roll-card">
+      <div class="rc-name">${ABILITY_NAMES[a]}</div>
+      <div class="rc-sub">Ability Check</div>
+      <div class="rc-mod" data-roll-d20="${D.mods[a]}" data-roll-label="${esc(ABILITY_NAMES[a])} Check">${fmtMod(D.mods[a])}</div>
+    </div>`).join("");
+
+  document.getElementById("roll-saves").innerHTML = ABILITIES.map(a => `
+    <div class="roll-card">
+      <div class="rc-name">${ABILITY_NAMES[a]}</div>
+      <div class="rc-sub">Saving Throw</div>
+      <div class="rc-mod" data-roll-d20="${D.saves[a]}" data-roll-label="${esc(ABILITY_NAMES[a])} Save">${fmtMod(D.saves[a])}</div>
+    </div>`).join("");
+
+  document.getElementById("roll-skills").innerHTML = Object.keys(SKILL_ABILITY).map(skill => {
+    const s = D.skills[skill];
+    return `<div class="roll-card">
+      <div class="rc-name">${esc(skill)}${s.proficient ? " ★" : ""}</div>
+      <div class="rc-sub">${ABILITY_NAMES[s.ability]}</div>
+      <div class="rc-mod" data-roll-d20="${s.mod}" data-roll-label="${esc(skill)}">${fmtMod(s.mod)}</div>
+    </div>`;
+  }).join("");
+}
+
+/* ---- Rules reference ---- */
+function renderReference() {
+  document.getElementById("ref-body").innerHTML = GAME_DATA.keywords.map(k =>
+    `<div class="ref-item"><div class="rf-term">${esc(k.term)}</div><div class="rf-def">${esc(k.def)}</div></div>`
+  ).join("");
+}
+
+/* ============================================================
+   6. EVENT HANDLING
+   ============================================================ */
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.hidden = true; }, 1800);
+}
+
+/* Tabs */
+document.getElementById("tab-nav").addEventListener("click", e => {
+  const btn = e.target.closest(".tab-btn");
+  if (!btn) return;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b === btn));
+  const tab = btn.dataset.tab;
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + tab));
+  document.body.dataset.activeTab = tab;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+
+/* Identity inputs */
+document.getElementById("char-name").addEventListener("input", e => { character.name = e.target.value; document.getElementById("summary-name").value = e.target.value; save(); });
+document.getElementById("summary-name").addEventListener("input", e => { character.name = e.target.value; document.getElementById("char-name").value = e.target.value; save(); });
+
+document.getElementById("char-background").addEventListener("change", e => {
+  const newBg = e.target.value;
+  const old = character.background;
+  character.background = newBg;
+  // offer to load starting gear when switching to a real background and arsenal/inv is empty
+  if (newBg && newBg !== old) maybeLoadStartingGear(newBg);
+  save(); renderAll();
+});
+
+document.getElementById("char-level").addEventListener("change", e => {
+  character.level = Number(e.target.value);
+  save(); renderAll();
+});
+
+/* Ability score edits (delegated) */
+document.getElementById("ability-grid").addEventListener("input", e => {
+  const a = e.target.dataset.ability;
+  if (!a) return;
+  let v = parseInt(e.target.value, 10);
+  if (isNaN(v)) return;
+  v = Math.max(1, Math.min(30, v));
+  character.abilities[a] = v;
+  // keep currentHP within new max
+  const newMax = derive().maxHp;
+  if (character.currentHP > newMax) character.currentHP = newMax;
+  save(); renderAll();
+});
+
+/* HP controls */
+document.querySelectorAll(".hp-btn[data-hp]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const delta = Number(btn.dataset.hp);
+    character.currentHP = Math.max(0, Math.min(D.maxHp, character.currentHP + delta));
+    if (character.currentHP > 0) character.deathSaves = { success: 0, fail: 0 };
+    save(); renderSummary(); renderCharacterTab(); renderActionsDashboard();
+  });
+});
+
+/* Death saves */
+document.getElementById("ds-roll-btn").addEventListener("click", () => {
+  if (!character.deathSaves) character.deathSaves = { success: 0, fail: 0 };
+  const ds = character.deathSaves;
+  const die = rollDie(20);
+  const success = die >= 10;
+  if (success) ds.success = Math.min(3, ds.success + 1);
+  else ds.fail = Math.min(3, ds.fail + 1);
+  addRollLog("Death Save", `d20 [${die}] vs DC 10`, die, die === 20 ? "crit" : die === 1 ? "fumble" : null);
+  save(); renderCharacterTab();
+});
+document.getElementById("hp-full").addEventListener("click", () => {
+  character.currentHP = D.maxHp; character.deathSaves = { success: 0, fail: 0 }; save(); renderSummary(); renderCharacterTab();
+});
+
+/* Temp HP controls */
+document.querySelectorAll(".hp-btn[data-temp]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const delta = Number(btn.dataset.temp);
+    character.tempHP = Math.max(0, (character.tempHP || 0) + delta);
+    save(); renderAll();
+  });
+});
+document.getElementById("temp-hp-clear").addEventListener("click", () => {
+  character.tempHP = 0; save(); renderAll();
+});
+
+/* Resolve: click to spend, shift-click (or right-click) to restore */
+document.getElementById("summary-stats").addEventListener("click", e => {
+  if (!e.target.closest("#summary-resolve")) return;
+  if (character.resolveCurrent > 0) {
+    character.resolveCurrent -= 1;
+    toast(`Resolve spent (${character.resolveCurrent}/${D.resolveMax})`);
+  } else {
+    toast("No Resolve remaining.");
+  }
+  save(); renderAll();
+});
+document.getElementById("summary-stats").addEventListener("contextmenu", e => {
+  if (!e.target.closest("#summary-resolve")) return;
+  e.preventDefault();
+  if (character.resolveCurrent < D.resolveMax) {
+    character.resolveCurrent += 1;
+    toast(`Resolve restored (${character.resolveCurrent}/${D.resolveMax})`);
+  }
+  save(); renderAll();
+});
+
+/* Resolve button on the Character tab */
+document.getElementById("char-stat-grid").addEventListener("click", e => {
+  if (!e.target.closest("#char-resolve-card")) return;
+  if (character.resolveCurrent > 0) {
+    character.resolveCurrent -= 1;
+    toast(`Resolve spent (${character.resolveCurrent}/${D.resolveMax})`);
+  } else {
+    toast("No Resolve remaining.");
+  }
+  save(); renderAll();
+});
+document.getElementById("char-stat-grid").addEventListener("contextmenu", e => {
+  if (!e.target.closest("#char-resolve-card")) return;
+  e.preventDefault();
+  if (character.resolveCurrent < D.resolveMax) {
+    character.resolveCurrent += 1;
+    toast(`Resolve restored (${character.resolveCurrent}/${D.resolveMax})`);
+  }
+  save(); renderAll();
+});
+
+/* Rests */
+document.getElementById("rest-btn").addEventListener("click", e => {
+  e.stopPropagation();
+  document.getElementById("rest-menu").hidden = !document.getElementById("rest-menu").hidden;
+});
+document.addEventListener("click", e => {
+  const menu = document.getElementById("rest-menu");
+  if (!menu.hidden && !e.target.closest("#rest-menu") && !e.target.closest("#rest-btn")) menu.hidden = true;
+});
+document.getElementById("rest-menu").addEventListener("click", e => {
+  const btn = e.target.closest("[data-rest]");
+  if (!btn) return;
+  const type = btn.dataset.rest;
+  if (type === "short") {
+    toast("Short Rest: tend wounds, craft, or recover short-rest abilities.");
+  } else if (type === "camp") {
+    const missing = D.maxHp - character.currentHP;
+    character.currentHP = Math.min(D.maxHp, character.currentHP + Math.ceil(missing / 2));
+    character.tempHP = 0;
+    if (character.currentHP > 0) character.deathSaves = { success: 0, fail: 0 };
+    toast("Camp rest taken — half of missing HP restored.");
+  } else if (type === "long") {
+    character.currentHP = D.maxHp;
+    character.tempHP = 0;
+    character.resolveCurrent = D.resolveMax;
+    character.statuses = [];
+    character.deathSaves = { success: 0, fail: 0 };
+    toast("Long rest taken — HP, Resolve restored and statuses cleared.");
+  }
+  document.getElementById("rest-menu").hidden = true;
+  save(); renderAll();
+});
+
+/* Rolls tab click-to-roll (delegated) */
+document.getElementById("tab-rolls").addEventListener("click", e => {
+  const el = e.target.closest("[data-roll-d20]");
+  if (!el) return;
+  rollD20(Number(el.dataset.rollD20), el.dataset.rollLabel);
+});
+
+/* Custom dice roller — accepts any formula (e.g. "3d5 + 5d76 + 21", "2d6 + STR"). */
+function doCustomRoll() {
+  const input = document.getElementById("custom-roll-input");
+  const expr = input.value.trim();
+  if (!expr) { toast("Enter a dice formula, e.g. 2d6 + 3"); return; }
+  const parts = parseFormula(expr);
+  if (!parts.length) { toast("Couldn't read that formula."); return; }
+  const { total, detail } = rollFormula(parts);
+  addRollLog(`Custom: ${expr}`, detail, total);
+}
+document.getElementById("custom-roll-btn").addEventListener("click", doCustomRoll);
+document.getElementById("custom-roll-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") doCustomRoll();
+});
+
+/* Dice notation help modal */
+document.getElementById("dice-help-btn").addEventListener("click", () => {
+  showModal(`
+    <div class="modal-head"><h3>Dice Notation</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body">
+      <table class="dice-help-table">
+        <tr><th>Syntax</th><th>Meaning</th></tr>
+        <tr><td><code>XdY</code></td><td>Roll X dice with Y sides (e.g. <code>3d6</code>).</td></tr>
+        <tr><td><code>+ - * /</code></td><td>Arithmetic, with parentheses for grouping. Division rounds down.</td></tr>
+        <tr><td><code>khN</code> / <code>klN</code></td><td>Keep highest/lowest N dice from the roll.</td></tr>
+        <tr><td><code>dhN</code> / <code>dlN</code></td><td>Drop highest/lowest N dice.</td></tr>
+        <tr><td><code>rrN</code>, <code>rr&lt;N</code>, <code>rr&gt;N</code></td><td>Reroll any die matching the comparison, repeatedly (capped).</td></tr>
+        <tr><td><code>roN</code></td><td>Reroll a matching die, but only once.</td></tr>
+        <tr><td><code>raN</code></td><td>Reroll once, keeping the higher of the two results.</td></tr>
+        <tr><td><code>miN</code> / <code>maN</code></td><td>Set a minimum/maximum value for each die (clamps results).</td></tr>
+        <tr><td><code>!</code>, <code>!N</code>, <code>!&gt;N</code>, <code>!&lt;N</code></td><td>Exploding dice — when a die meets the condition (default = max), roll an extra die and add it (capped).</td></tr>
+        <tr><td><code>&gt;N</code> / <code>&lt;N</code> / <code>=N</code></td><td>Success counting — each die meeting the condition counts as 1; the group total becomes the success count.</td></tr>
+      </table>
+      <div class="dice-help-examples">
+        <div><code>4d6kh3</code> — roll 4d6, keep the highest 3 (classic ability score roll).</div>
+        <div><code>2d20kl1</code> — roll 2d20 with disadvantage (keep the lowest).</div>
+        <div><code>8d6ro1</code> — roll 8d6, rerolling any 1s once.</div>
+        <div><code>6d10!</code> — roll 6d10, exploding on max (10s).</div>
+        <div><code>4d20kh2rr1mi2</code> — roll 4d20, reroll 1s, clamp minimum to 2, then keep the highest 2.</div>
+        <div><code>5d10&gt;6</code> — roll 5d10, count dice greater than 6 as successes.</div>
+        <div><code>2d6 + 1d8 + STR - 2</code> — mix dice groups, ability modifiers, and flat numbers.</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn accent" data-modal-close>Close</button>
+    </div>
+  `);
+});
+
+/* Ability score click-to-roll (delegated) */
+document.getElementById("ability-grid").addEventListener("click", e => {
+  const el = e.target.closest("[data-roll-ability]");
+  if (!el) return;
+  const a = el.dataset.rollAbility;
+  rollD20(D.mods[a], `${ABILITY_NAMES[a]} Check`);
+});
+
+/* Perk removal (delegated) */
+document.getElementById("perks-list").addEventListener("click", e => {
+  const idx = e.target.dataset.removePerk;
+  if (idx == null) return;
+  character.perks.splice(Number(idx), 1);
+  save(); renderAll();
+});
+
+/* Status add/remove (delegated) */
+document.getElementById("status-active").addEventListener("click", e => {
+  const chip = e.target.closest("[data-remove-status]");
+  if (!chip) return;
+  character.statuses.splice(Number(chip.dataset.removeStatus), 1);
+  save(); renderAll();
+});
+document.getElementById("status-adder").addEventListener("click", e => {
+  if (e.target.id === "status-custom") {
+    const v = prompt("Custom status effect:");
+    if (v && v.trim()) { character.statuses.push(v.trim()); save(); renderAll(); }
+    return;
+  }
+  const label = e.target.dataset.addStatus;
+  if (label) { character.statuses.push(label); save(); renderAll(); }
+});
+
+/* Weapons: ammo, edit, delete (delegated) */
+document.getElementById("weapons-grid").addEventListener("click", e => {
+  const atkBtn = e.target.closest("[data-roll-attack]");
+  if (atkBtn) {
+    const w = character.weapons.find(x => x.id === atkBtn.dataset.rollAttack);
+    if (w) rollD20(weaponToHitMod(w), `${w.name || "Weapon"} — Attack`);
+    return;
+  }
+  const dmgBtn = e.target.closest("[data-roll-damage]");
+  if (dmgBtn) {
+    const w = character.weapons.find(x => x.id === dmgBtn.dataset.rollDamage);
+    if (w) rollDamage(w.damage, `${w.name || "Weapon"} — Damage`);
+    return;
+  }
+  const ammoBtn = e.target.closest("[data-ammo]");
+  if (ammoBtn) {
+    const [id, op] = ammoBtn.dataset.ammo.split(":");
+    const w = character.weapons.find(x => x.id === id);
+    if (!w) return;
+    const invId = ammoInvId(w);
+    if (op === "reload") {
+      const needed = (w.maxAmmo || 0) - (w.currentAmmo || 0);
+      const have = invId ? (character.inventory[invId] || 0) : 0;
+      const take = Math.max(0, Math.min(needed, have));
+      if (needed <= 0) { toast("Already fully loaded."); return; }
+      if (take <= 0) {
+        toast(invId ? `No ${w.ammoType || "ammo"} in your bag.` : "No ammo source for this weapon.");
+        return;
+      }
+      w.currentAmmo = (w.currentAmmo || 0) + take;
+      character.inventory[invId] = (character.inventory[invId] || 0) - take;
+      toast(`Loaded ${take} from bag (${character.inventory[invId]} left).`);
+    } else if (op === "1") {
+      const have = invId ? (character.inventory[invId] || 0) : Infinity;
+      if ((w.currentAmmo || 0) < (w.maxAmmo || 0) && have > 0) {
+        w.currentAmmo = (w.currentAmmo || 0) + 1;
+        if (invId) character.inventory[invId] -= 1;
+      }
+    } else if (op === "-1") {
+      if ((w.currentAmmo || 0) > 0) {
+        w.currentAmmo -= 1;
+      }
+    }
+    save(); renderAll();
+    return;
+  }
+  const silBtn = e.target.closest("[data-toggle-silencer]");
+  if (silBtn) {
+    const w = character.weapons.find(x => x.id === silBtn.dataset.toggleSilencer);
+    if (!w) return;
+    if (!w.silenced) {
+      if ((character.inventory.silencer || 0) <= 0) return;
+      character.inventory.silencer -= 1;
+      w.silenced = true;
+    } else {
+      character.inventory.silencer = (character.inventory.silencer || 0) + 1;
+      w.silenced = false;
+    }
+    save(); renderAll();
+    return;
+  }
+  const editBtn = e.target.closest("[data-edit-weapon]");
+  if (editBtn) { openWeaponModal(editBtn.dataset.editWeapon); return; }
+  const delBtn = e.target.closest("[data-del-weapon]");
+  if (delBtn) {
+    const w = character.weapons.find(x => x.id === delBtn.dataset.delWeapon);
+    if (w) {
+      showConfirmModal(`Remove ${w.name || "this weapon"}?`, () => {
+        character.weapons = character.weapons.filter(x => x.id !== w.id);
+        save(); renderAll();
+      });
+    }
+  }
+});
+
+/* Backpack qty / item info (delegated) */
+document.getElementById("backpack").addEventListener("click", e => {
+  const btn = e.target.closest("[data-inv]");
+  if (btn) {
+    const [id, delta] = btn.dataset.inv.split(":");
+    const cur = character.inventory[id] || 0;
+    const d = Number(delta);
+    if (d > 0 && cur === 0 && !hasFreeBackpackSlot()) {
+      toast("Backpack full — increase capacity or drop items.");
+      return;
+    }
+    character.inventory[id] = Math.max(0, cur + d);
+    save(); renderAll();
+    return;
+  }
+  const info = e.target.closest("[data-item-info]");
+  if (info) showItemPopup(info.dataset.itemInfo);
+});
+
+/* Equip slot selects (delegated) */
+document.getElementById("equip-slots").addEventListener("change", e => {
+  const sel = e.target.closest("[data-equip-slot]");
+  if (!sel) return;
+  const [group, idxStr] = sel.dataset.equipSlot.split(":");
+  const arr = group === "holster" ? character.holsters : character.weaponSlots;
+  arr[Number(idxStr)] = sel.value || null;
+  save(); renderAll();
+});
+
+/* Add / remove equip slots (delegated) */
+document.getElementById("equip-slots").addEventListener("click", e => {
+  const addBtn = e.target.closest("[data-add-slot]");
+  if (addBtn) {
+    ensureEquipArrays();
+    if (addBtn.dataset.addSlot === "holster" && character.holsters.length < MAX_HOLSTERS) character.holsters.push(null);
+    else if (addBtn.dataset.addSlot === "weapon" && character.weaponSlots.length < MAX_WEAPON_SLOTS) character.weaponSlots.push(null);
+    else if (addBtn.dataset.addSlot === "armor") {
+      openArmorModal();
+      return;
+    }
+    save(); renderAll();
+    return;
+  }
+  const rmBtn = e.target.closest("[data-remove-slot]");
+  if (rmBtn) {
+    const [group, idxStr] = rmBtn.dataset.removeSlot.split(":");
+    const arr = group === "holster" ? character.holsters : character.weaponSlots;
+    arr.splice(Number(idxStr), 1);
+    if (arr.length === 0) arr.push(null); // always keep at least one slot
+    save(); renderAll();
+    return;
+  }
+  if (e.target.closest("[data-remove-armor]")) {
+    character.armor = null;
+    character.wearingArmor = false;
+    save(); renderAll();
+  }
+});
+
+/* Crafting (delegated) */
+document.getElementById("crafting").addEventListener("click", e => {
+  const btn = e.target.closest("[data-craft]");
+  if (!btn || btn.disabled) return;
+  const id = btn.dataset.craft;
+  const item = GAME_DATA.invById[id];
+  const have = Object.entries(item.craft).every(([mid, n]) => (character.inventory[mid] || 0) >= n);
+  if (!have) return;
+  // Crafting a brand-new item type (currently 0 of it) needs a free backpack slot.
+  const isNewStack = (character.inventory[id] || 0) === 0;
+  if (isNewStack && !hasFreeBackpackSlot()) {
+    toast("Backpack full — increase capacity or drop items.");
+    return;
+  }
+  Object.entries(item.craft).forEach(([mid, n]) => { character.inventory[mid] -= n; });
+  character.inventory[id] = (character.inventory[id] || 0) + 1;
+  save(); renderAll();
+  toast(`Crafted ${item.name}`);
+});
+
+/* Custom items: add / qty / delete */
+document.getElementById("add-custom-item-btn").addEventListener("click", () => {
+  openCustomItemModal();
+});
+document.getElementById("upgrade-backpack-btn").addEventListener("click", () => {
+  openUpgradeBackpackModal();
+});
+document.getElementById("backpack").addEventListener("click", e => {
+  const qtyBtn = e.target.closest("[data-custom-qty]");
+  if (qtyBtn) {
+    const [id, delta] = qtyBtn.dataset.customQty.split(":");
+    const it = character.customItems.find(i => i.id === id);
+    if (it) {
+      const d = Number(delta);
+      if (d > 0 && it.qty === 0 && !hasFreeBackpackSlot()) {
+        toast("Backpack full — increase capacity or drop items.");
+        return;
+      }
+      it.qty = Math.max(0, it.qty + d);
+    }
+    save(); renderAll();
+    return;
+  }
+  const delBtn = e.target.closest("[data-custom-del]");
+  if (delBtn) {
+    const id = delBtn.dataset.customDel;
+    const it = character.customItems.find(i => i.id === id);
+    showConfirmModal(`Remove "${it ? it.name : "this item"}" from your backpack?`, () => {
+      character.customItems = character.customItems.filter(i => i.id !== id);
+      save(); renderAll();
+    });
+    return;
+  }
+  const editBtn = e.target.closest("[data-custom-edit]");
+  if (editBtn) {
+    openCustomItemModal(editBtn.dataset.customEdit);
+    return;
+  }
+});
+
+/* Upgrade Backpack modal: adjust general backpack slots, holsters, weapon slots. */
+function openUpgradeBackpackModal() {
+  ensureEquipArrays();
+  const renderBody = () => `
+    <div class="modal-head"><h3>Upgrade Backpack</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body">
+      <div class="upgrade-row">
+        <div>
+          <div class="field-label">Backpack Slots</div>
+          <div class="upgrade-hint">General inventory slots (max ${MAX_BACKPACK_SLOTS}).</div>
+        </div>
+        <div class="upgrade-stepper">
+          <button class="btn ghost" id="ub-slots-minus" ${character.backpackSlots <= GENERAL_SLOTS_DEFAULT ? "disabled" : ""}>−</button>
+          <span class="upgrade-val" id="ub-slots-val">${character.backpackSlots}</span>
+          <button class="btn ghost" id="ub-slots-plus" ${character.backpackSlots >= MAX_BACKPACK_SLOTS ? "disabled" : ""}>+</button>
+        </div>
+      </div>
+      <div class="upgrade-row">
+        <div>
+          <div class="field-label">Holsters</div>
+          <div class="upgrade-hint">Sidearm slots (max ${MAX_HOLSTERS}).</div>
+        </div>
+        <div class="upgrade-stepper">
+          <span class="upgrade-val" id="ub-holsters-val">${character.holsters.length}</span>
+          <button class="btn ghost" id="ub-holsters-plus" ${character.holsters.length >= MAX_HOLSTERS ? "disabled" : ""}>+ Add</button>
+        </div>
+      </div>
+      <div class="upgrade-row">
+        <div>
+          <div class="field-label">Weapon Slots</div>
+          <div class="upgrade-hint">Rifle/bow/melee slots (max ${MAX_WEAPON_SLOTS}).</div>
+        </div>
+        <div class="upgrade-stepper">
+          <span class="upgrade-val" id="ub-weapons-val">${character.weaponSlots.length}</span>
+          <button class="btn ghost" id="ub-weapons-plus" ${character.weaponSlots.length >= MAX_WEAPON_SLOTS ? "disabled" : ""}>+ Add</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn accent" data-modal-close>Done</button>
+    </div>
+  `;
+  showModal(renderBody());
+  const refresh = () => { showModal(renderBody()); attach(); };
+  function attach() {
+    const minus = document.getElementById("ub-slots-minus");
+    const plus = document.getElementById("ub-slots-plus");
+    const hPlus = document.getElementById("ub-holsters-plus");
+    const wPlus = document.getElementById("ub-weapons-plus");
+    if (minus) minus.addEventListener("click", () => {
+      if (character.backpackSlots > GENERAL_SLOTS_DEFAULT) {
+        character.backpackSlots--;
+        save(); renderAll(); refresh();
+      }
+    });
+    if (plus) plus.addEventListener("click", () => {
+      if (character.backpackSlots < MAX_BACKPACK_SLOTS) {
+        character.backpackSlots++;
+        save(); renderAll(); refresh();
+      }
+    });
+    if (hPlus) hPlus.addEventListener("click", () => {
+      if (character.holsters.length < MAX_HOLSTERS) {
+        character.holsters.push(null);
+        save(); renderAll(); refresh();
+      }
+    });
+    if (wPlus) wPlus.addEventListener("click", () => {
+      if (character.weaponSlots.length < MAX_WEAPON_SLOTS) {
+        character.weaponSlots.push(null);
+        save(); renderAll(); refresh();
+      }
+    });
+  }
+  attach();
+}
+
+/* Custom item modal: simple name + description form */
+function openCustomItemModal(editId) {
+  const editing = editId ? character.customItems.find(i => i.id === editId) : null;
+  showModal(`
+    <div class="modal-head"><h3>${editing ? "Edit Item" : "Add Custom Item"}</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body">
+      <label class="field"><span class="field-label">Name</span>
+        <input id="custom-item-name" type="text" placeholder="Item name" autofocus value="${esc(editing ? editing.name : "")}" />
+      </label>
+      <label class="field"><span class="field-label">Description (optional)</span>
+        <textarea id="custom-item-desc" rows="2" placeholder="What is it?">${esc(editing ? (editing.desc || "") : "")}</textarea>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-modal-close>Cancel</button>
+      <button class="btn accent" id="custom-item-save">${editing ? "Save" : "Add"}</button>
+    </div>
+  `);
+  const nameInput = document.getElementById("custom-item-name");
+  const save_ = () => {
+    const name = nameInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+    const desc = document.getElementById("custom-item-desc").value.trim();
+    if (!Array.isArray(character.customItems)) character.customItems = [];
+    if (editing) {
+      editing.name = name;
+      editing.desc = desc;
+    } else {
+      if (!hasFreeBackpackSlot()) {
+        toast("Backpack full — increase capacity or drop items.");
+        return;
+      }
+      character.customItems.push({ id: "custom-" + Date.now() + "-" + Math.floor(Math.random() * 10000), name, desc, qty: 1 });
+    }
+    save(); hideModal(); renderAll();
+  };
+  document.getElementById("custom-item-save").addEventListener("click", save_);
+  nameInput.addEventListener("keydown", e => { if (e.key === "Enter") save_(); });
+}
+
+/* ============================================================
+   GENERIC MODAL SYSTEM
+   ============================================================ */
+function showModal(contentHtml) {
+  const overlay = document.getElementById("modal-overlay");
+  const box = document.getElementById("modal-box");
+  box.innerHTML = contentHtml;
+  overlay.classList.remove("hidden");
+}
+function hideModal() {
+  const overlay = document.getElementById("modal-overlay");
+  overlay.classList.add("hidden");
+  document.getElementById("modal-box").innerHTML = "";
+}
+document.getElementById("modal-overlay").addEventListener("click", e => {
+  if (e.target.id === "modal-overlay") hideModal();
+});
+document.getElementById("modal-overlay").addEventListener("click", e => {
+  if (e.target.closest("[data-modal-close]")) hideModal();
+});
+
+/* Centered Yes/No confirm modal. Calls onConfirm() if the user picks Yes. */
+function showConfirmModal(message, onConfirm) {
+  showModal(`
+    <div class="modal-head"><h3>Confirm</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body"><div class="modal-confirm-msg">${esc(message)}</div></div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-modal-close>No</button>
+      <button class="btn accent" id="modal-confirm-yes">Yes</button>
+    </div>
+  `);
+  document.getElementById("modal-confirm-yes").addEventListener("click", () => {
+    hideModal();
+    onConfirm();
+  });
+}
+
+/* Armor modal: choose Type (Heavy/Light), AC modifier, and an "Other" note. */
+function openArmorModal() {
+  const a = character.armor || { type: "Light", acBonus: 0, other: "" };
+  showModal(`
+    <div class="modal-head"><h3>Armor</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body">
+      <label class="field"><span class="field-label">Type</span>
+        <select id="armor-type">
+          <option value="Heavy" ${a.type === "Heavy" ? "selected" : ""}>Heavy</option>
+          <option value="Light" ${a.type !== "Heavy" ? "selected" : ""}>Light</option>
+        </select>
+      </label>
+      <label class="field"><span class="field-label">AC Modifier</span>
+        <input id="armor-ac" type="number" step="1" value="${Number(a.acBonus) || 0}" />
+      </label>
+      <label class="field"><span class="field-label">Other (notes / description)</span>
+        <textarea id="armor-other" rows="2" placeholder="Anything else to remember…">${esc(a.other || "")}</textarea>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-modal-close>Cancel</button>
+      <button class="btn accent" id="armor-save">Save</button>
+    </div>
+  `);
+  document.getElementById("armor-save").addEventListener("click", () => {
+    const type = document.getElementById("armor-type").value;
+    const acBonus = Number(document.getElementById("armor-ac").value) || 0;
+    const other = document.getElementById("armor-other").value.trim();
+    character.armor = { type, acBonus, other };
+    character.wearingArmor = true;
+    save(); hideModal(); renderAll();
+  });
+}
+
+/* Item info popup (now rendered in the generic modal) */
+function showItemPopup(id) {
+  const item = GAME_DATA.invById[id] || character.customItems.find(it => it.id === id);
+  if (!item) return;
+  showModal(`
+    <div class="modal-head"><h3>${esc(item.name)}</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body"><div class="modal-item-body">${esc(item.desc || "No description.")}</div></div>
+  `);
+}
+
+/* Skill trees (delegated) */
+document.getElementById("skill-trees").addEventListener("click", e => {
+  const card = e.target.closest("[data-tier]");
+  if (!card) return;
+  const [treeId, idxStr] = card.dataset.tier.split(":");
+  const idx = Number(idxStr);
+  const tree = GAME_DATA.skillTrees[treeId];
+  const unlocked = character.unlocked[treeId] || 0;
+
+  if (idx < unlocked) {
+    // refund (only highest unlocked is clickable)
+    character.unlocked[treeId] = unlocked - 1;
+    if (character.unlocked[treeId] === 0) delete character.unlocked[treeId];
+    save(); renderAll();
+    toast(`Refunded ${tree.tiers[idx].name}`);
+  } else if (idx === unlocked) {
+    const cost = tree.tiers[idx].cost;
+    if (D.apAvailable < cost) { toast(`Not enough AP (need ${cost}).`); return; }
+    character.unlocked[treeId] = unlocked + 1;
+    save(); renderAll();
+    toast(`Unlocked ${tree.tiers[idx].name}!`);
+  }
+});
+
+/* Notes (delegated) */
+document.getElementById("add-note-btn").addEventListener("click", () => {
+  character.notes.unshift({ id: uid(), title: "", body: "", collapsed: false });
+  save(); renderNotes();
+});
+document.getElementById("notes-list").addEventListener("click", e => {
+  const tog = e.target.closest("[data-note-toggle]");
+  if (tog) {
+    const n = character.notes.find(x => x.id === tog.dataset.noteToggle);
+    if (n) { n.collapsed = !n.collapsed; save(false); document.querySelector(`.note-card[data-note="${n.id}"]`).classList.toggle("collapsed", n.collapsed); }
+    return;
+  }
+  const del = e.target.closest("[data-note-del]");
+  if (del) {
+    character.notes = character.notes.filter(x => x.id !== del.dataset.noteDel);
+    save(); renderNotes();
+  }
+});
+document.getElementById("notes-list").addEventListener("input", e => {
+  const tId = e.target.dataset.noteTitle, bId = e.target.dataset.noteBody;
+  if (tId) { const n = character.notes.find(x => x.id === tId); if (n) { n.title = e.target.value; save(); } }
+  if (bId) { const n = character.notes.find(x => x.id === bId); if (n) { n.body = e.target.value; save(); } }
+});
+
+/* Rules reference toggle */
+document.getElementById("ref-toggle").addEventListener("click", () => {
+  const body = document.getElementById("ref-body");
+  const panel = document.querySelector(".ref-panel");
+  body.classList.toggle("collapsed");
+  panel.classList.toggle("open", !body.classList.contains("collapsed"));
+});
+
+/* ============================================================
+   7. WEAPON MODAL (add / edit)
+   ============================================================ */
+let editingWeaponId = null;
+
+function buildWeaponTemplateSelect() {
+  const sel = document.getElementById("wf-template");
+  if (sel.dataset.built) return;
+  sel.innerHTML = `<option value="">— Custom / blank —</option>` +
+    Object.keys(GAME_DATA.weaponTemplates).filter(k => k).map(k => `<option value="${k}">${k}</option>`).join("");
+  sel.dataset.built = "1";
+  sel.addEventListener("change", () => {
+    const t = GAME_DATA.weaponTemplates[sel.value];
+    if (!t) return;
+    document.getElementById("wf-name").value = t.name || "";
+    document.getElementById("wf-category").value = t.category || "rifle";
+    document.getElementById("wf-damage").value = t.damage || "";
+    document.getElementById("wf-range").value = t.range || "";
+    document.getElementById("wf-ammotype").value = t.ammoType || "";
+    document.getElementById("wf-maxammo").value = t.maxAmmo || 0;
+    document.getElementById("wf-sound").value = t.sound || "Medium";
+    document.getElementById("wf-upgrades").value = (t.upgrades || []).join(", ");
+  });
+}
+
+function openWeaponModal(id) {
+  buildWeaponTemplateSelect();
+  editingWeaponId = id || null;
+  const w = id ? character.weapons.find(x => x.id === id) : null;
+  document.getElementById("weapon-modal-title").textContent = w ? "Edit Weapon" : "Add Weapon";
+  document.getElementById("wf-template").value = "";
+  document.getElementById("wf-name").value = w ? w.name : "";
+  document.getElementById("wf-category").value = w ? w.category : "rifle";
+  document.getElementById("wf-damage").value = w ? w.damage : "";
+  document.getElementById("wf-range").value = w ? w.range : "";
+  document.getElementById("wf-ammotype").value = w ? w.ammoType : "";
+  document.getElementById("wf-maxammo").value = w ? w.maxAmmo : 0;
+  document.getElementById("wf-sound").value = w ? w.sound : "Very Loud";
+  document.getElementById("wf-upgrades").value = w ? (w.upgrades || []).join(", ") : "";
+  document.getElementById("wf-notes").value = w ? w.notes : "";
+  document.getElementById("weapon-modal").hidden = false;
+}
+function closeWeaponModal() { document.getElementById("weapon-modal").hidden = true; editingWeaponId = null; }
+
+function saveWeaponFromModal() {
+  const data = {
+    name: document.getElementById("wf-name").value.trim() || "Unnamed Weapon",
+    category: document.getElementById("wf-category").value,
+    damage: document.getElementById("wf-damage").value.trim(),
+    range: document.getElementById("wf-range").value.trim(),
+    ammoType: document.getElementById("wf-ammotype").value.trim(),
+    maxAmmo: Math.max(0, parseInt(document.getElementById("wf-maxammo").value, 10) || 0),
+    sound: document.getElementById("wf-sound").value,
+    upgrades: document.getElementById("wf-upgrades").value.split(",").map(s => s.trim()).filter(Boolean),
+    notes: document.getElementById("wf-notes").value.trim(),
+  };
+  if (editingWeaponId) {
+    const w = character.weapons.find(x => x.id === editingWeaponId);
+    Object.assign(w, data);
+    if (w.currentAmmo > w.maxAmmo) w.currentAmmo = w.maxAmmo;
+  } else {
+    character.weapons.push(Object.assign({ id: uid(), currentAmmo: data.maxAmmo }, data));
+  }
+  save(); closeWeaponModal(); renderAll();
+}
+
+document.getElementById("add-weapon-btn").addEventListener("click", () => openWeaponModal(null));
+document.getElementById("weapon-modal-close").addEventListener("click", closeWeaponModal);
+document.getElementById("weapon-cancel").addEventListener("click", closeWeaponModal);
+document.getElementById("weapon-save").addEventListener("click", saveWeaponFromModal);
+document.getElementById("weapon-modal").addEventListener("click", e => { if (e.target.id === "weapon-modal") closeWeaponModal(); });
+
+/* ============================================================
+   8. STARTING GEAR, IMPORT / EXPORT, RESET
+   ============================================================ */
+function maybeLoadStartingGear(bgId) {
+  const bg = GAME_DATA.backgrounds[bgId];
+  if (!bg || !bg.gear) return;
+  const invEmpty = Object.values(character.inventory).every(v => !v);
+  if (character.weapons.length === 0 && invEmpty) {
+    showConfirmModal(`Load ${bg.name} starting gear (weapon + supplies)?`, () => {
+      character.weapons = (bg.gear.weapons || []).map(w => Object.assign({}, w, { id: uid() }));
+      character.inventory = Object.assign({}, bg.gear.inventory || {});
+      // sync HP to max for a fresh build
+      character.currentHP = derive().maxHp;
+      save(); renderAll();
+      toast(`${bg.name} gear loaded`);
+    });
+  }
+}
+
+function exportCharacter() {
+  const blob = new Blob([JSON.stringify(character, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const safe = (character.name || "survivor").replace(/[^a-z0-9]+/gi, "_").toLowerCase();
+  a.href = url; a.download = `tlou-${safe}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast("Character exported");
+}
+
+function importCharacter(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (typeof data !== "object" || !data) throw new Error("bad file");
+      character = Object.assign(defaultCharacter(), data);
+      // basic sanity
+      character.weapons = (character.weapons || []).map(w => Object.assign({ id: uid() }, w));
+      save(); renderAll();
+      toast("Character imported ✓");
+    } catch (err) {
+      toast("Import failed — invalid file");
+    }
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById("export-btn").addEventListener("click", exportCharacter);
+document.getElementById("import-btn").addEventListener("click", () => document.getElementById("import-file").click());
+document.getElementById("import-file").addEventListener("change", e => {
+  if (e.target.files[0]) importCharacter(e.target.files[0]);
+  e.target.value = "";
+});
+document.getElementById("reset-btn").addEventListener("click", () => {
+  showConfirmModal("Start a NEW character? This erases the current one (export first if you want to keep it).", () => {
+    character = defaultCharacter();
+    save(); renderAll();
+    toast("New character created");
+  });
+});
+
+/* ============================================================
+   9. INIT
+   ============================================================ */
+function init() {
+  document.body.dataset.activeTab = "character";
+  renderReference();
+  renderAll();
+  save(false);
+}
+init();
+
+/* Backstop: keep the display in sync with the data even if some handler
+   forgets to re-render. Only re-renders when the data actually changed and
+   never while you're typing in a field or have a dropdown open. */
+let __lastSnapshot = JSON.stringify(character);
+setInterval(() => {
+  const ae = document.activeElement;
+  if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return; // don't interrupt input
+  const snap = JSON.stringify(character);
+  if (snap !== __lastSnapshot) {
+    __lastSnapshot = snap;
+    renderAll();
+  }
+}, 1000);
