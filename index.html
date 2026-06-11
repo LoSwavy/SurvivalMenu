@@ -90,6 +90,16 @@
         </div>
       </div>
 
+      <!-- Death Saves -->
+      <div id="death-save-block" class="death-save-block" hidden>
+        <div class="ds-status" id="ds-status"></div>
+        <div class="ds-pips">
+          <div class="ds-row"><span class="ds-row-label">Successes</span><div class="ds-pip-group" id="ds-success-pips"></div></div>
+          <div class="ds-row"><span class="ds-row-label">Failures</span><div class="ds-pip-group" id="ds-fail-pips"></div></div>
+        </div>
+        <button class="btn accent" id="ds-roll-btn">Roll Death Save</button>
+      </div>
+
       <!-- Temp HP -->
       <div class="temp-hp-block">
         <span class="temp-hp-label">TEMP HP</span>
@@ -108,9 +118,9 @@
       <div class="rest-controls">
         <button class="btn ghost rest-btn" id="rest-btn"><img class="icon" src="icons/icon-rest.svg" alt=""> Rest</button>
         <div class="rest-menu" id="rest-menu" hidden>
-          <button data-rest="short">Short Rest<span class="rm-sub">Clear temporary HP</span></button>
-          <button data-rest="camp">Camp Rest<span class="rm-sub">Heal up &amp; recover 1 Resolve</span></button>
-          <button data-rest="long">Long Rest<span class="rm-sub">Full HP &amp; Resolve restored</span></button>
+          <button data-rest="short">Short Rest<span class="rm-sub">Tend wounds, craft, recover abilities</span></button>
+          <button data-rest="camp">Camp Rest<span class="rm-sub">Restore half of missing HP</span></button>
+          <button data-rest="long">Long Rest<span class="rm-sub">Full HP, Resolve &amp; statuses cleared</span></button>
         </div>
       </div>
     </div>
@@ -175,6 +185,12 @@
     </div>
     <div id="general-slots" class="general-slots"></div>
     <div id="backpack" class="backpack"></div>
+
+    <div class="panel-head loose">
+      <h2>Custom Items</h2>
+      <button class="add-slot-btn" id="add-custom-item-btn">+ Add Custom Item</button>
+    </div>
+    <div id="custom-items" class="inv-grid"></div>
 
     <div class="panel-head loose">
       <h2>Crafting</h2>
