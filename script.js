@@ -1559,7 +1559,7 @@ function renderBackpack() {
         const inThis = Math.min(max, remaining);
         remaining -= inThis;
         cells.push(`<div class="gen-slot filled" data-item-info="${esc(it.id)}">
-          <span class="gs-icon">${icon("inv-medkit")}</span>
+          <span class="gs-icon">${icon("invcustom")}</span>
           <div class="gs-name">${esc(it.name)}</div>
           <div class="gs-qty">${inThis}/${max}</div>
         </div>`);
