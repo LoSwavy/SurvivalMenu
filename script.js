@@ -319,8 +319,8 @@ GAME_DATA.skillTrees = {
   scavenger: {
     id: "scavenger", category: "Survival", name: "Scavenger", flavor: "consistent finds",
     tiers: [
-      { name: "Keen Eye", cost: T1, desc: "Advantage on Investigation to search areas/bodies.",
-        dash: [{ cat: CAT.PASSIVE, name: "Keen Eye", desc: "Advantage on Investigation to search." }] },
+      { name: "Keen Eye", cost: T1, desc: "Advantage on Investigation to search areas/bodies. Reroll one failed loot check per rest.",
+        dash: [{ cat: CAT.PASSIVE, name: "Keen Eye", desc: "Advantage on Investigation to search. Reroll one failed loot check per rest." }] },
       { name: "Opportunist", cost: T2, desc: "When you succeed on a loot check, roll once more on the item table for a bonus item.",
         dash: [{ cat: CAT.PASSIVE, name: "Opportunist", desc: "A successful loot check grants one extra roll on the item table." }] },
       { name: "Scrap Magnet", cost: T3, desc: "When you find basic materials, roll a d4; on 2–4, gain +1 of that item. Once per loot check.",
@@ -330,8 +330,8 @@ GAME_DATA.skillTrees = {
   endure: {
     id: "endure", category: "Survival", name: "Endure the World", flavor: "durability, resilience",
     tiers: [
-      { name: "Hardened Survivor", cost: T1, desc: "Gain 5 + CON max HP.).",
-        dash: [{ cat: CAT.PASSIVE, name: "Hardened Survivor", desc: "+ (5 + CON) max HP." }],
+      { name: "Hardened Survivor", cost: T1, desc: "Gain 5 + CON max HP. Advantage on saves vs environmental effects (cold, gas, heat, etc.).",
+        dash: [{ cat: CAT.PASSIVE, name: "Hardened Survivor", desc: "+ (5 + CON) max HP. Advantage on saves vs environmental hazards." }],
         stat: (d, c) => { d.maxHp += 5 + c.mods.con; } },
       { name: "Grit", cost: T2, desc: "Once per short rest, when you'd be reduced to 0 HP, drop to 1 HP instead. Immune to Frightened.",
         dash: [{ cat: CAT.REACT, name: "Grit", desc: "1/short rest: drop to 1 HP instead of 0. Immune to Frightened." }] },
@@ -393,7 +393,7 @@ GAME_DATA.keywords = [
   { term: "Open", def: "Prone, stunned, downed, begging, knocked down, or concussed — a valid Finisher target." },
   { term: "Unaware", def: "A creature that hasn't noticed you. If a creature notices you, they will become Unaware if you stay hidden from them for a full round of combat." },
   { term: "Marked", def: "Tagged by Predator Instincts. +2 to hit it and bonus damage once per turn. One Mark at a time." },
-  { term: "Suppressed", def: "Pinned by Precision Marksman — moving triggers a reaction shot. Ends when it moves or you make another attack that isnt also Supressive Fire. Infected are immune to this condition." },
+  { term: "Suppressed", def: "Pinned by Precision Marksman — moving triggers a reaction shot. Ends when it moves or you make another attack that isnt also Supressive Fire. Infected are immune to this condition. " },
   { term: "Braced", def: "Made no movement this turn (needs Bob and Weave): can't be shoved/knocked prone/knocked down; can use Reactive Guard." },
   { term: "Finisher", def: "Instant kill (no roll) on a Fodder creature that is Open or Unaware and within range. Apex enemies are immune." },
   { term: "Aimed Shot", def: "Before a ranged attack, take −5 to hit for +10 damage. Once per attack, regardless of how many features grant it." },
@@ -462,6 +462,7 @@ function defaultCharacter() {
     armor: null,            // { type, acBonus, other } or null
     deathSaves: { success: 0, fail: 0 },
     customItems: [],        // [{id, name, desc, qty}]
+    backpackSlots: 12,      // general inventory slots (default 12, max 20)
   };
 }
 
@@ -485,6 +486,8 @@ function loadCharacter() {
       if (c.armor === undefined) c.armor = null;
       if (!c.deathSaves) c.deathSaves = { success: 0, fail: 0 };
       if (!Array.isArray(c.customItems)) c.customItems = [];
+      if (typeof c.backpackSlots !== "number" || c.backpackSlots < 12) c.backpackSlots = 12;
+      if (c.backpackSlots > 20) c.backpackSlots = 20;
       delete c.equip;
       return c;
     }
@@ -710,51 +713,313 @@ function ammoInvId(w) {
    ============================================================ */
 function rollDie(sides) { return 1 + Math.floor(Math.random() * sides); }
 
-/* Parse a dice/modifier expression like "2d8 + 3" or "1d20 + STR".
-   Ability tokens (STR/DEX/...) are replaced with the character's modifier. */
+/* ------------------------------------------------------------
+   Avrae-style dice formula parser & roller.
+   Supports: XdY, + - * /, parentheses, kh/kl, dh/dl, rr/ro/ra,
+   mi/ma, exploding (!), and success counting (>/</=).
+   ------------------------------------------------------------ */
+
+/* Tokenize a formula string into numbers, dice groups, operators and parens. */
+function tokenizeFormula(str) {
+  const tokens = [];
+  // Dice group: NdS followed by any combination of modifiers
+  // kh/kl/dh/dl<N>, rr/ro/ra<cmp><N>, mi/ma<N>, !<cmp><N>, ><N>/<<N>/=<N> (success)
+  const modRe = "(?:(?:k[hl]|d[hl])\\d+|r[ro]?[<>]?\\d+|ra[<>]?\\d+|mi\\d+|ma\\d+|![<>]?\\d*|[<>=]\\d+)";
+  const diceRe = new RegExp("^(\\d*)d(\\d+)((?:" + modRe + ")*)", "i");
+  let i = 0;
+  while (i < str.length) {
+    const ch = str[i];
+    if (/\s/.test(ch)) { i++; continue; }
+    if ("+-*/()".includes(ch)) { tokens.push({ type: "op", value: ch }); i++; continue; }
+    const rest = str.slice(i);
+    const diceMatch = rest.match(diceRe);
+    if (diceMatch) {
+      const n = diceMatch[1] === "" ? 1 : parseInt(diceMatch[1], 10);
+      const sides = parseInt(diceMatch[2], 10);
+      const mods = parseDiceMods(diceMatch[3] || "");
+      tokens.push({ type: "dice", n, sides, mods, raw: diceMatch[0] });
+      i += diceMatch[0].length;
+      continue;
+    }
+    const numMatch = rest.match(/^\d+(\.\d+)?/);
+    if (numMatch) {
+      tokens.push({ type: "num", value: parseFloat(numMatch[0]) });
+      i += numMatch[0].length;
+      continue;
+    }
+    // Unknown character — skip it
+    i++;
+  }
+  return tokens;
+}
+
+/* Parse the modifier suffix of a dice group (e.g. "kh2rr1mi2") into an ordered list. */
+function parseDiceMods(str) {
+  const mods = [];
+  const re = /(k[hl]|d[hl])(\d+)|(rr|ro|ra)([<>]?)(\d+)|(mi|ma)(\d+)|(!)([<>]?)(\d*)|([<>=])(\d+)/gi;
+  let m;
+  while ((m = re.exec(str))) {
+    if (m[1]) {
+      mods.push({ type: m[1].toLowerCase(), n: parseInt(m[2], 10) });
+    } else if (m[3]) {
+      mods.push({ type: m[3].toLowerCase(), cmp: m[4] || "=", n: parseInt(m[5], 10) });
+    } else if (m[6]) {
+      mods.push({ type: m[6].toLowerCase(), n: parseInt(m[7], 10) });
+    } else if (m[8]) {
+      mods.push({ type: "explode", cmp: m[9] || "=", n: m[10] === "" ? null : parseInt(m[10], 10) });
+    } else if (m[11]) {
+      mods.push({ type: "success", cmp: m[11], n: parseInt(m[12], 10) });
+    }
+  }
+  return mods;
+}
+
+/* Convert tokens into a parts list compatible with rollFormula().
+   Ability tokens (STR/DEX/...) are replaced with the character's modifier
+   before tokenizing, so this stays a thin wrapper for backward compatibility. */
 function parseFormula(expr) {
   let str = String(expr || "").toUpperCase();
   ABILITIES.forEach(a => {
     const re = new RegExp("\\b" + a.toUpperCase() + "\\b", "g");
     str = str.replace(re, (D.mods[a] >= 0 ? "+" : "") + D.mods[a]);
   });
-  const parts = [];
-  const re = /([+-]?\s*\d*d\d+)|([+-]?\s*\d+)/gi;
-  let m;
-  while ((m = re.exec(str))) {
-    const tok = m[0].replace(/\s+/g, "");
-    if (!tok) continue;
-    if (/d/i.test(tok)) {
-      let sign = 1, t = tok;
-      if (t[0] === "+") t = t.slice(1);
-      else if (t[0] === "-") { sign = -1; t = t.slice(1); }
-      const [nStr, sidesStr] = t.split(/d/i);
-      const n = nStr === "" ? 1 : parseInt(nStr, 10);
-      const sides = parseInt(sidesStr, 10);
-      parts.push({ type: "dice", n, sides, sign });
-    } else {
-      parts.push({ type: "flat", value: parseInt(tok, 10) });
-    }
-  }
-  return parts;
+  return tokenizeFormula(str);
 }
 
-function rollFormula(parts) {
-  let total = 0;
-  const detail = [];
-  parts.forEach(p => {
-    if (p.type === "dice") {
-      const rolls = [];
-      for (let i = 0; i < p.n; i++) rolls.push(rollDie(p.sides));
-      const sum = rolls.reduce((a, b) => a + b, 0) * p.sign;
-      total += sum;
-      detail.push(`${p.sign < 0 ? "-" : ""}${p.n}d${p.sides} [${rolls.join(", ")}]`);
-    } else {
-      total += p.value;
-      if (p.value !== 0) detail.push(fmtMod(p.value));
+function cmpCheck(val, cmp, n) {
+  if (cmp === ">") return val > n;
+  if (cmp === "<") return val < n;
+  return val === n; // "=" or default
+}
+
+/* Roll a single dice group (n dice of `sides`), applying its modifiers in
+   a sensible order: explode -> reroll (rr/ro/ra) -> min/max clamp -> keep/drop -> success count.
+   Returns { total, dice: [{value, kept, dropped, tags:[...]}], summaryStr } */
+function rollDiceGroup(group) {
+  const { n, sides, mods } = group;
+  const MAX_DICE = 200; // sanity cap on total dice rolled (incl. exploded/rerolled)
+  let dice = [];
+  for (let i = 0; i < Math.min(n, MAX_DICE); i++) {
+    dice.push({ value: rollDie(sides), kept: true, dropped: false, tags: [] });
+  }
+
+  const explodeMod = mods.find(m => m.type === "explode");
+  const rrMods = mods.filter(m => m.type === "rr");
+  const roMod = mods.find(m => m.type === "ro");
+  const raMod = mods.find(m => m.type === "ra");
+  const miMod = mods.find(m => m.type === "mi");
+  const maMod = mods.find(m => m.type === "ma");
+  const khMod = mods.find(m => m.type === "kh");
+  const klMod = mods.find(m => m.type === "kl");
+  const dhMod = mods.find(m => m.type === "dh");
+  const dlMod = mods.find(m => m.type === "dl");
+  const successMod = mods.find(m => m.type === "success");
+
+  // 1. Exploding dice
+  if (explodeMod) {
+    const cmp = explodeMod.cmp;
+    const target = explodeMod.n != null ? explodeMod.n : sides; // default = max value
+    let totalDice = dice.length;
+    let idx = 0;
+    while (idx < dice.length && totalDice < n + 20 && totalDice < MAX_DICE) {
+      const d = dice[idx];
+      if (!d.tags.includes("exploded-from") && cmpCheck(d.value, cmp === "=" ? "=" : cmp, target)) {
+        d.tags.push("exploded");
+        const nd = { value: rollDie(sides), kept: true, dropped: false, tags: ["exploded-from"] };
+        dice.splice(idx + 1, 0, nd);
+        totalDice++;
+      }
+      idx++;
+    }
+  }
+
+  // 2. Reroll: rr (repeat), ro (once), ra (once, keep higher)
+  rrMods.forEach(rm => {
+    let iterations = 0;
+    let changed = true;
+    while (changed && iterations < 100) {
+      changed = false;
+      for (const d of dice) {
+        if (d.dropped) continue;
+        if (cmpCheck(d.value, rm.cmp, rm.n)) {
+          d.tags.push("rerolled");
+          d.value = rollDie(sides);
+          changed = true;
+          iterations++;
+          if (iterations >= 100) break;
+        }
+      }
     }
   });
-  return { total, detail: detail.join(" ") || "0" };
+
+  if (roMod) {
+    dice.forEach(d => {
+      if (d.dropped) return;
+      if (cmpCheck(d.value, roMod.cmp, roMod.n)) {
+        d.tags.push("rerolled");
+        d.value = rollDie(sides);
+      }
+    });
+  }
+
+  if (raMod) {
+    dice.forEach(d => {
+      if (d.dropped) return;
+      if (cmpCheck(d.value, raMod.cmp, raMod.n)) {
+        const newVal = rollDie(sides);
+        if (newVal > d.value) {
+          d.tags.push(`ra(${d.value}->kept ${newVal})`);
+          d.value = newVal;
+        } else {
+          d.tags.push(`ra(kept ${d.value}, discarded ${newVal})`);
+        }
+      }
+    });
+  }
+
+  // 3. Min/Max clamp
+  if (miMod) {
+    dice.forEach(d => {
+      if (d.value < miMod.n) { d.tags.push(`min->${miMod.n}`); d.value = miMod.n; }
+    });
+  }
+  if (maMod) {
+    dice.forEach(d => {
+      if (d.value > maMod.n) { d.tags.push(`max->${maMod.n}`); d.value = maMod.n; }
+    });
+  }
+
+  // 4. Keep/Drop highest/lowest
+  const applyKeepDrop = (mod, keep, highest) => {
+    if (!mod) return;
+    const eligible = dice.map((d, i) => ({ d, i })).filter(o => !o.d.dropped);
+    const sorted = [...eligible].sort((a, b) => highest ? b.d.value - a.d.value : a.d.value - b.d.value);
+    const count = keep ? mod.n : eligible.length - mod.n;
+    const toKeepIdx = new Set(sorted.slice(0, Math.max(0, count)).map(o => o.i));
+    eligible.forEach(o => {
+      if (!toKeepIdx.has(o.i)) {
+        o.d.dropped = true;
+        o.d.kept = false;
+        o.d.tags.push("dropped");
+      }
+    });
+  };
+  if (khMod) applyKeepDrop(khMod, true, true);
+  if (klMod) applyKeepDrop(klMod, true, false);
+  if (dhMod) applyKeepDrop(dhMod, false, true); // drop the N highest -> keep = total - N
+  if (dlMod) applyKeepDrop(dlMod, false, false);
+
+  // 5. Success counting
+  let total;
+  if (successMod) {
+    total = dice.reduce((sum, d) => {
+      if (d.dropped) return sum;
+      return sum + (cmpCheck(d.value, successMod.cmp, successMod.n) ? 1 : 0);
+    }, 0);
+  } else {
+    total = dice.reduce((sum, d) => d.dropped ? sum : sum + d.value, 0);
+  }
+
+  return { total, dice, successMod: !!successMod };
+}
+
+/* Build a human-readable breakdown string for a dice group's roll result. */
+function formatDiceGroup(group, result) {
+  const { dice } = result;
+  const dieStrs = dice.map(d => {
+    let s = String(d.value);
+    if (d.tags.some(t => t === "rerolled")) s = `~~${d.value}~~→reroll`;
+    if (d.tags.some(t => t === "exploded")) s += "!";
+    if (d.tags.some(t => t.startsWith("exploded-from"))) s += "(exploded)";
+    if (d.dropped) s = `~~${s}~~`;
+    return s;
+  });
+  let label = `${group.n}d${group.sides}`;
+  group.mods.forEach(m => {
+    if (m.type === "kh" || m.type === "kl" || m.type === "dh" || m.type === "dl") label += `${m.type}${m.n}`;
+    else if (m.type === "rr") label += `rr${m.cmp !== "=" ? m.cmp : ""}${m.n}`;
+    else if (m.type === "ro") label += `ro${m.cmp !== "=" ? m.cmp : ""}${m.n}`;
+    else if (m.type === "ra") label += `ra${m.cmp !== "=" ? m.cmp : ""}${m.n}`;
+    else if (m.type === "mi") label += `mi${m.n}`;
+    else if (m.type === "ma") label += `ma${m.n}`;
+    else if (m.type === "explode") label += `!${m.cmp !== "=" ? m.cmp : ""}${m.n != null ? m.n : ""}`;
+    else if (m.type === "success") label += `${m.cmp}${m.n}`;
+  });
+  let str = `${label}: [${dieStrs.join(", ")}]`;
+  if (result.successMod) {
+    str += ` = ${result.total} success${result.total === 1 ? "" : "es"}`;
+  } else {
+    const kept = dice.filter(d => !d.dropped);
+    if (kept.length !== dice.length || dice.some(d => d.tags.length)) {
+      str += ` = ${result.total}`;
+    }
+  }
+  return str;
+}
+
+/* Evaluate a token stream (with parentheses & * / + -) into a total + detail breakdown.
+   Returns { total, detail, groups } where groups is per-dice-group roll info (for nat20/1 etc). */
+function rollFormula(parts) {
+  // Recursive-descent over tokens with explicit parenthesis support.
+  let pos = 0;
+  const detailParts = [];
+  const groups = [];
+
+  function peek() { return parts[pos]; }
+
+  function parseExpr() {
+    let val = parseTerm();
+    while (peek() && peek().type === "op" && (peek().value === "+" || peek().value === "-")) {
+      const op = parts[pos++].value;
+      const rhs = parseTerm();
+      val = op === "+" ? val + rhs : val - rhs;
+    }
+    return val;
+  }
+
+  function parseTerm() {
+    let val = parseFactor();
+    while (peek() && peek().type === "op" && (peek().value === "*" || peek().value === "/")) {
+      const op = parts[pos++].value;
+      const rhs = parseFactor();
+      val = op === "*" ? val * rhs : Math.floor(val / rhs);
+    }
+    return val;
+  }
+
+  function parseFactor() {
+    const tok = peek();
+    if (!tok) return 0;
+    if (tok.type === "op" && tok.value === "(") {
+      pos++;
+      const val = parseExpr();
+      if (peek() && peek().type === "op" && peek().value === ")") pos++;
+      return val;
+    }
+    if (tok.type === "op" && (tok.value === "+" || tok.value === "-")) {
+      pos++;
+      const sign = tok.value === "-" ? -1 : 1;
+      return sign * parseFactor();
+    }
+    if (tok.type === "num") {
+      pos++;
+      detailParts.push(detailParts.length === 0 ? String(tok.value) : fmtMod(tok.value));
+      return tok.value;
+    }
+    if (tok.type === "dice") {
+      pos++;
+      const result = rollDiceGroup(tok);
+      groups.push({ group: tok, result });
+      detailParts.push(formatDiceGroup(tok, result));
+      return result.total;
+    }
+    return 0;
+  }
+
+  const total = parseExpr();
+  let detail = detailParts.join(" ");
+  if (!detail) detail = "0";
+  return { total, detail, groups };
 }
 
 let rollLogTimer = 0;
@@ -1193,7 +1458,8 @@ function renderWeapons() {
 }
 
 /* ---- Backpack ---- */
-const GENERAL_SLOTS = 12;
+const GENERAL_SLOTS_DEFAULT = 12;
+const MAX_BACKPACK_SLOTS = 20;
 const MAX_HOLSTERS = 2;
 const MAX_WEAPON_SLOTS = 3;
 const HOLSTER_CATS = ["handgun"];
@@ -1241,10 +1507,39 @@ function renderEquipSlots() {
   root.innerHTML = html;
 }
 
+/* Total backpack slot capacity (configurable, default 12, max 20). */
+function backpackCap() {
+  if (typeof character.backpackSlots !== "number") character.backpackSlots = GENERAL_SLOTS_DEFAULT;
+  return Math.max(GENERAL_SLOTS_DEFAULT, Math.min(MAX_BACKPACK_SLOTS, character.backpackSlots));
+}
+
+/* Count how many backpack slots are currently occupied (each stack = 1 slot). */
+function usedBackpackSlots() {
+  const stack3 = !!(D && D.flags && D.flags.craftedStack3);
+  let used = 0;
+  GAME_DATA.inventory.flatMap(g => g.items).forEach(it => {
+    const qty = character.inventory[it.id] || 0;
+    if (qty > 0) used += Math.ceil(qty / stackMax(it, stack3));
+  });
+  if (Array.isArray(character.customItems)) {
+    character.customItems.forEach(it => {
+      const qty = it.qty || 0;
+      if (qty > 0) used += Math.ceil(qty / stackMax(it, stack3));
+    });
+  }
+  return used;
+}
+
+/* Returns true if a NEW item type/stack can be added (i.e. there's a free slot). */
+function hasFreeBackpackSlot() {
+  return usedBackpackSlots() < backpackCap();
+}
+
 function renderBackpack() {
   renderEquipSlots();
 
   const stack3 = !!(D && D.flags && D.flags.craftedStack3);
+  const cap = backpackCap();
   const filledItems = GAME_DATA.inventory.flatMap(g => g.items).filter(it => (character.inventory[it.id] || 0) > 0);
   // Build one slot per stack (items overflow into additional slots when over their stack max).
   const cells = [];
@@ -1261,12 +1556,27 @@ function renderBackpack() {
       </div>`);
     }
   });
+  if (Array.isArray(character.customItems)) {
+    character.customItems.forEach(it => {
+      let remaining = it.qty || 0;
+      const max = stackMax(it, stack3);
+      while (remaining > 0) {
+        const inThis = Math.min(max, remaining);
+        remaining -= inThis;
+        cells.push(`<div class="gen-slot filled" data-item-info="${esc(it.id)}">
+          <span class="gs-icon">${icon("inv-medkit")}</span>
+          <div class="gs-name">${esc(it.name)}</div>
+          <div class="gs-qty">${inThis}/${max}</div>
+        </div>`);
+      }
+    });
+  }
   const usedSlots = cells.length;
-  while (cells.length < GENERAL_SLOTS) cells.push(`<div class="gen-slot"></div>`);
-  document.getElementById("general-slots").innerHTML = cells.slice(0, GENERAL_SLOTS).join("");
+  while (cells.length < cap) cells.push(`<div class="gen-slot"></div>`);
+  document.getElementById("general-slots").innerHTML = cells.slice(0, cap).join("");
 
   const root = document.getElementById("backpack");
-  root.innerHTML = GAME_DATA.inventory.map(group => {
+  let html = GAME_DATA.inventory.map(group => {
     const items = group.items.map(it => {
       const qty = character.inventory[it.id] || 0;
       return `<div class="inv-item ${qty > 0 ? "has-qty" : "zero"}" data-item-info="${it.id}">
@@ -1286,27 +1596,32 @@ function renderBackpack() {
     </div>`;
   }).join("");
 
-  document.getElementById("slot-counter").textContent = `Slots used: ${Math.min(usedSlots, GENERAL_SLOTS)} / ${GENERAL_SLOTS}`;
-
-  renderCustomItems();
-  renderCrafting();
-}
-
-/* Custom items */
-function renderCustomItems() {
-  const root = document.getElementById("custom-items");
+  // Custom items rendered in the main backpack listing alongside normal items.
   if (!Array.isArray(character.customItems)) character.customItems = [];
-  root.innerHTML = character.customItems.map(it => `
-    <div class="inv-item has-qty" data-item-info="${esc(it.id)}">
-      <div class="inv-name">${esc(it.name)}</div>
-      <div class="inv-qty">${it.qty}</div>
-      <div class="inv-controls">
-        <button class="inv-btn minus" data-custom-qty="${esc(it.id)}:-1">−</button>
-        <button class="inv-btn plus" data-custom-qty="${esc(it.id)}:1">＋</button>
-        <button class="inv-btn" data-custom-edit="${esc(it.id)}">✎</button>
-        <button class="inv-btn" data-custom-del="${esc(it.id)}">✕</button>
-      </div>
-    </div>`).join("");
+  if (character.customItems.length) {
+    const customCards = character.customItems.map(it => `
+      <div class="inv-item has-qty" data-item-info="${esc(it.id)}">
+        <span class="inv-icon">${icon("inv-medkit")}</span>
+        <div class="inv-name">${esc(it.name)}</div>
+        <div class="inv-qty">${it.qty}</div>
+        <div class="inv-controls">
+          <button class="inv-btn minus" data-custom-qty="${esc(it.id)}:-1">−</button>
+          <button class="inv-btn plus" data-custom-qty="${esc(it.id)}:1">＋</button>
+          <button class="inv-btn" data-custom-edit="${esc(it.id)}">✎</button>
+          <button class="inv-btn" data-custom-del="${esc(it.id)}">✕</button>
+        </div>
+        ${it.desc ? `<div class="inv-recipe">${esc(it.desc)}</div>` : ""}
+      </div>`).join("");
+    html += `<div class="inv-cat">
+      <div class="inv-cat-head"><span class="ic-icon">${groupIcon("Custom")}</span><h3>Custom Items</h3></div>
+      <div class="inv-grid">${customCards}</div>
+    </div>`;
+  }
+  root.innerHTML = html;
+
+  document.getElementById("slot-counter").textContent = `Slots used: ${Math.min(usedSlots, cap)} / ${cap}`;
+
+  renderCrafting();
 }
 
 /* Max stack size per item: materials 5, ammo 10, crafted 2 (3 with Efficient Workflow). */
@@ -1645,6 +1960,40 @@ document.getElementById("custom-roll-input").addEventListener("keydown", e => {
   if (e.key === "Enter") doCustomRoll();
 });
 
+/* Dice notation help modal */
+document.getElementById("dice-help-btn").addEventListener("click", () => {
+  showModal(`
+    <div class="modal-head"><h3>Dice Notation</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body">
+      <table class="dice-help-table">
+        <tr><th>Syntax</th><th>Meaning</th></tr>
+        <tr><td><code>XdY</code></td><td>Roll X dice with Y sides (e.g. <code>3d6</code>).</td></tr>
+        <tr><td><code>+ - * /</code></td><td>Arithmetic, with parentheses for grouping. Division rounds down.</td></tr>
+        <tr><td><code>khN</code> / <code>klN</code></td><td>Keep highest/lowest N dice from the roll.</td></tr>
+        <tr><td><code>dhN</code> / <code>dlN</code></td><td>Drop highest/lowest N dice.</td></tr>
+        <tr><td><code>rrN</code>, <code>rr&lt;N</code>, <code>rr&gt;N</code></td><td>Reroll any die matching the comparison, repeatedly (capped).</td></tr>
+        <tr><td><code>roN</code></td><td>Reroll a matching die, but only once.</td></tr>
+        <tr><td><code>raN</code></td><td>Reroll once, keeping the higher of the two results.</td></tr>
+        <tr><td><code>miN</code> / <code>maN</code></td><td>Set a minimum/maximum value for each die (clamps results).</td></tr>
+        <tr><td><code>!</code>, <code>!N</code>, <code>!&gt;N</code>, <code>!&lt;N</code></td><td>Exploding dice — when a die meets the condition (default = max), roll an extra die and add it (capped).</td></tr>
+        <tr><td><code>&gt;N</code> / <code>&lt;N</code> / <code>=N</code></td><td>Success counting — each die meeting the condition counts as 1; the group total becomes the success count.</td></tr>
+      </table>
+      <div class="dice-help-examples">
+        <div><code>4d6kh3</code> — roll 4d6, keep the highest 3 (classic ability score roll).</div>
+        <div><code>2d20kl1</code> — roll 2d20 with disadvantage (keep the lowest).</div>
+        <div><code>8d6ro1</code> — roll 8d6, rerolling any 1s once.</div>
+        <div><code>6d10!</code> — roll 6d10, exploding on max (10s).</div>
+        <div><code>4d20kh2rr1mi2</code> — roll 4d20, reroll 1s, clamp minimum to 2, then keep the highest 2.</div>
+        <div><code>5d10&gt;6</code> — roll 5d10, count dice greater than 6 as successes.</div>
+        <div><code>2d6 + 1d8 + STR - 2</code> — mix dice groups, ability modifiers, and flat numbers.</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn accent" data-modal-close>Close</button>
+    </div>
+  `);
+});
+
 /* Ability score click-to-roll (delegated) */
 document.getElementById("ability-grid").addEventListener("click", e => {
   const el = e.target.closest("[data-roll-ability]");
@@ -1759,7 +2108,12 @@ document.getElementById("backpack").addEventListener("click", e => {
   if (btn) {
     const [id, delta] = btn.dataset.inv.split(":");
     const cur = character.inventory[id] || 0;
-    character.inventory[id] = Math.max(0, cur + Number(delta));
+    const d = Number(delta);
+    if (d > 0 && cur === 0 && !hasFreeBackpackSlot()) {
+      toast("Backpack full — increase capacity or drop items.");
+      return;
+    }
+    character.inventory[id] = Math.max(0, cur + d);
     save(); renderAll();
     return;
   }
@@ -1815,6 +2169,12 @@ document.getElementById("crafting").addEventListener("click", e => {
   const item = GAME_DATA.invById[id];
   const have = Object.entries(item.craft).every(([mid, n]) => (character.inventory[mid] || 0) >= n);
   if (!have) return;
+  // Crafting a brand-new item type (currently 0 of it) needs a free backpack slot.
+  const isNewStack = (character.inventory[id] || 0) === 0;
+  if (isNewStack && !hasFreeBackpackSlot()) {
+    toast("Backpack full — increase capacity or drop items.");
+    return;
+  }
   Object.entries(item.craft).forEach(([mid, n]) => { character.inventory[mid] -= n; });
   character.inventory[id] = (character.inventory[id] || 0) + 1;
   save(); renderAll();
@@ -1825,12 +2185,22 @@ document.getElementById("crafting").addEventListener("click", e => {
 document.getElementById("add-custom-item-btn").addEventListener("click", () => {
   openCustomItemModal();
 });
-document.getElementById("custom-items").addEventListener("click", e => {
+document.getElementById("upgrade-backpack-btn").addEventListener("click", () => {
+  openUpgradeBackpackModal();
+});
+document.getElementById("backpack").addEventListener("click", e => {
   const qtyBtn = e.target.closest("[data-custom-qty]");
   if (qtyBtn) {
     const [id, delta] = qtyBtn.dataset.customQty.split(":");
     const it = character.customItems.find(i => i.id === id);
-    if (it) it.qty = Math.max(0, it.qty + Number(delta));
+    if (it) {
+      const d = Number(delta);
+      if (d > 0 && it.qty === 0 && !hasFreeBackpackSlot()) {
+        toast("Backpack full — increase capacity or drop items.");
+        return;
+      }
+      it.qty = Math.max(0, it.qty + d);
+    }
     save(); renderAll();
     return;
   }
@@ -1849,9 +2219,84 @@ document.getElementById("custom-items").addEventListener("click", e => {
     openCustomItemModal(editBtn.dataset.customEdit);
     return;
   }
-  const info = e.target.closest("[data-item-info]");
-  if (info) showItemPopup(info.dataset.itemInfo);
 });
+
+/* Upgrade Backpack modal: adjust general backpack slots, holsters, weapon slots. */
+function openUpgradeBackpackModal() {
+  ensureEquipArrays();
+  const renderBody = () => `
+    <div class="modal-head"><h3>Upgrade Backpack</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body">
+      <div class="upgrade-row">
+        <div>
+          <div class="field-label">Backpack Slots</div>
+          <div class="upgrade-hint">General inventory slots (max ${MAX_BACKPACK_SLOTS}).</div>
+        </div>
+        <div class="upgrade-stepper">
+          <button class="btn ghost" id="ub-slots-minus" ${character.backpackSlots <= GENERAL_SLOTS_DEFAULT ? "disabled" : ""}>−</button>
+          <span class="upgrade-val" id="ub-slots-val">${character.backpackSlots}</span>
+          <button class="btn ghost" id="ub-slots-plus" ${character.backpackSlots >= MAX_BACKPACK_SLOTS ? "disabled" : ""}>+</button>
+        </div>
+      </div>
+      <div class="upgrade-row">
+        <div>
+          <div class="field-label">Holsters</div>
+          <div class="upgrade-hint">Sidearm slots (max ${MAX_HOLSTERS}).</div>
+        </div>
+        <div class="upgrade-stepper">
+          <span class="upgrade-val" id="ub-holsters-val">${character.holsters.length}</span>
+          <button class="btn ghost" id="ub-holsters-plus" ${character.holsters.length >= MAX_HOLSTERS ? "disabled" : ""}>+ Add</button>
+        </div>
+      </div>
+      <div class="upgrade-row">
+        <div>
+          <div class="field-label">Weapon Slots</div>
+          <div class="upgrade-hint">Rifle/bow/melee slots (max ${MAX_WEAPON_SLOTS}).</div>
+        </div>
+        <div class="upgrade-stepper">
+          <span class="upgrade-val" id="ub-weapons-val">${character.weaponSlots.length}</span>
+          <button class="btn ghost" id="ub-weapons-plus" ${character.weaponSlots.length >= MAX_WEAPON_SLOTS ? "disabled" : ""}>+ Add</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn accent" data-modal-close>Done</button>
+    </div>
+  `;
+  showModal(renderBody());
+  const refresh = () => { showModal(renderBody()); attach(); };
+  function attach() {
+    const minus = document.getElementById("ub-slots-minus");
+    const plus = document.getElementById("ub-slots-plus");
+    const hPlus = document.getElementById("ub-holsters-plus");
+    const wPlus = document.getElementById("ub-weapons-plus");
+    if (minus) minus.addEventListener("click", () => {
+      if (character.backpackSlots > GENERAL_SLOTS_DEFAULT) {
+        character.backpackSlots--;
+        save(); renderAll(); refresh();
+      }
+    });
+    if (plus) plus.addEventListener("click", () => {
+      if (character.backpackSlots < MAX_BACKPACK_SLOTS) {
+        character.backpackSlots++;
+        save(); renderAll(); refresh();
+      }
+    });
+    if (hPlus) hPlus.addEventListener("click", () => {
+      if (character.holsters.length < MAX_HOLSTERS) {
+        character.holsters.push(null);
+        save(); renderAll(); refresh();
+      }
+    });
+    if (wPlus) wPlus.addEventListener("click", () => {
+      if (character.weaponSlots.length < MAX_WEAPON_SLOTS) {
+        character.weaponSlots.push(null);
+        save(); renderAll(); refresh();
+      }
+    });
+  }
+  attach();
+}
 
 /* Custom item modal: simple name + description form */
 function openCustomItemModal(editId) {
@@ -1881,6 +2326,10 @@ function openCustomItemModal(editId) {
       editing.name = name;
       editing.desc = desc;
     } else {
+      if (!hasFreeBackpackSlot()) {
+        toast("Backpack full — increase capacity or drop items.");
+        return;
+      }
       character.customItems.push({ id: "custom-" + Date.now() + "-" + Math.floor(Math.random() * 10000), name, desc, qty: 1 });
     }
     save(); hideModal(); renderAll();
