@@ -261,10 +261,9 @@
 <!-- ===================== ROLL LOG ===================== -->
 <div class="roll-log" id="roll-log"></div>
 
-<!-- ===================== ITEM POPUP ===================== -->
-<div class="item-popup" id="item-popup" hidden>
-  <div class="item-popup-head"><span id="item-popup-title"></span><button class="modal-close" id="item-popup-close">✕</button></div>
-  <div class="item-popup-body" id="item-popup-body"></div>
+<!-- ===================== GENERIC MODAL ===================== -->
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal" id="modal-box"></div>
 </div>
 
 <!-- ===================== WEAPON MODAL ===================== -->
@@ -281,6 +280,7 @@
         <label class="field"><span class="field-label">Type / Category</span>
           <select id="wf-category">
             <option value="rifle">Rifle / Long Gun</option>
+            <option value="shotgun">Shotgun</option>
             <option value="handgun">Handgun / Small Gun</option>
             <option value="bow">Bow</option>
             <option value="blunt">Blunt Melee</option>
