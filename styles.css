@@ -275,6 +275,7 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
 }
 .hp-bar-fill.low  { background: linear-gradient(90deg, #8a5a2a, var(--rust)); }
 .hp-bar-fill.crit { background: linear-gradient(90deg, var(--red-deep), var(--red)); }
+.death-save-block[hidden] { display: none; }
 .death-save-block {
   margin-top: 12px; grid-column: 1 / -1;
   display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
@@ -659,6 +660,9 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
   display: flex; align-items: center; justify-content: center; padding: 16px;
 }
 .modal-overlay[hidden] { display: none; }
+.modal-overlay.hidden { display: none; }
+.modal-confirm-msg { font-size: 0.9rem; color: var(--text); line-height: 1.4; }
+.modal-item-body { font-size: 0.8rem; color: var(--text-dim); line-height: 1.4; }
 .modal {
   width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto;
   background: linear-gradient(170deg, var(--panel-2), var(--panel));
@@ -872,6 +876,7 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
 .add-slot-btn:hover { background: var(--green-glow); }
 .add-slot-btn .icon { width: 16px; height: 16px; }
 .equip-slot .es-armor-name { margin-top: 6px; font-size: 0.85rem; font-weight: 700; color: var(--text); }
+.equip-slot .es-armor-other { margin-top: 4px; font-size: 0.74rem; color: var(--text-dim); }
 
 .general-slots { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 12px; }
 .gen-slot {
