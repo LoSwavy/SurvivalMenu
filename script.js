@@ -47,7 +47,7 @@ GAME_DATA.weaponTemplates = {
   "": { name: "", category: "rifle" },
   "Bolt-Action Rifle": { name: "Bolt-Action Rifle", category: "rifle", damage: "2d8 + DEX", range: "300 ft", ammoType: "Rifle Ammo", maxAmmo: 6, sound: "Very Loud" },
   "Hunting Rifle":      { name: "Hunting Rifle", category: "rifle", damage: "2d8 + DEX", range: "250 ft", ammoType: "Rifle Ammo", maxAmmo: 5, sound: "Very Loud" },
-  "Shotgun":            { name: "Shotgun", category: "rifle", damage: "2d10 + DEX", range: "30 ft", ammoType: "Shells", maxAmmo: 2, sound: "Very Loud" },
+  "Shotgun":            { name: "Shotgun", category: "shotgun", damage: "2d6", ammoType: "Shotgun Shells", maxAmmo: 2, range: "Short", sound: "Very Loud" },
   "9mm Pistol":         { name: "9mm Pistol", category: "handgun", damage: "2d6 + DEX", range: "60 ft", ammoType: "Handgun Ammo", maxAmmo: 12, sound: "Very Loud" },
   "Snubnose Revolver":  { name: "Snubnose Revolver", category: "handgun", damage: "2d6 + DEX", range: "40 ft", ammoType: "Handgun Ammo", maxAmmo: 6, sound: "Very Loud" },
   "Hunting Bow":        { name: "Hunting Bow", category: "bow", damage: "1d8 + DEX", range: "120 ft", ammoType: "Arrows", maxAmmo: 8, sound: "Quiet" },
@@ -57,7 +57,7 @@ GAME_DATA.weaponTemplates = {
   "Improvised Weapon":  { name: "Improvised Weapon", category: "improvised", damage: "1d4 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
   "Upgraded Improvised":{ name: "Upgraded Improvised Weapon", category: "improvised", damage: "1d10 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Loud", upgrades: ["Upgraded (breaks on 1)"] },
 };
-const WEAPON_TYPE_LABEL = { rifle: "Rifle / Long Gun", handgun: "Handgun", bow: "Bow", blunt: "Blunt Melee", improvised: "Improvised Melee", melee: "Melee" };
+const WEAPON_TYPE_LABEL = { rifle: "Rifle", shotgun: "Shotgun", handgun: "Handgun", bow: "Bow", blunt: "Blunt Melee", improvised: "Improvised Melee", melee: "Melee" };
 
 GAME_DATA.backgrounds = {
   brawler: {
@@ -172,6 +172,11 @@ GAME_DATA.survivorPerks = {
     needsChoice: true, choices: ["STR Saves", "DEX Saves", "CON Saves", "INT Saves", "WIS Saves", "CHA Saves"],
     effect: (ch) => `Add Proficiency Bonus to ${ch.replace(" Saves", "")} saving throws.`,
   },
+  abilityImprovement: {
+    type: "abilityImprovement", label: "Ability Improvement", repeatable: true, max: 2,
+    needsChoice: true, choices: ["str", "dex", "con", "int", "wis", "cha"],
+    effect: (ch) => `+1 ${ABILITY_NAMES[ch] || ch.toUpperCase()}.`,
+  },
 };
 
 /* --- Skill Trees ---------------------------------------------------------
@@ -247,8 +252,8 @@ GAME_DATA.skillTrees = {
         stat: (d) => { d.ac += 2; } },
       { name: "Reactive Guard", cost: T2, desc: "While Braced, when a creature misses you with a melee attack, react to make a melee attack (Riposte) or shove it 5 ft.",
         dash: [{ cat: CAT.REACT, name: "Reactive Guard", desc: "While Braced, when a melee attack misses you: Riposte or shove 5 ft." }] },
-      { name: "Parry and Counter", cost: T3, desc: "Once per turn, when hit by a melee attack, reduce the damage by 1d8 + STR or DEX. If reduced to 0, make a free melee attack against the attacker.",
-        dash: [{ cat: CAT.REACT, name: "Parry and Counter", desc: "1/turn: reduce a melee hit by 1d8 + STR/DEX. If reduced to 0, free melee attack back." }] },
+      { name: "Parry and Counter", cost: T3, desc: "Once per turn, when hit by a melee attack, reduce the damage by 1d8. If reduced to 0, make a free melee attack against the attacker.",
+        dash: [{ cat: CAT.REACT, name: "Parry and Counter", desc: "1/turn: reduce a melee hit by 1d8. If reduced to 0, free melee attack back." }] },
     ],
   },
   // ===== CRAFTING =====
@@ -348,7 +353,8 @@ GAME_DATA.inventory = [
   ]},
   { group: "Ammunition", items: [
     { id: "handgunAmmo", name: "Handgun Ammo", icon: "inv-handgunAmmo", desc: "Ammunition for handguns." },
-    { id: "longGunAmmo", name: "Long-Gun Ammo", icon: "inv-longGunAmmo", desc: "Ammunition for rifles and shotguns." },
+    { id: "longGunAmmo", name: "Rifle Ammo", icon: "inv-longGunAmmo", desc: "Ammunition for rifles." },
+    { id: "shotgunAmmo", name: "Shotgun Shells", icon: "inv-shotgunAmmo", desc: "Ammunition for shotguns." },
     { id: "arrows", name: "Arrows", icon: "inv-arrows", desc: "Ammunition for bows. Can sometimes be retrieved after combat." },
   ]},
   { group: "Crafted Items", items: [
@@ -395,8 +401,8 @@ GAME_DATA.keywords = [
   { term: "Fodder / Apex", def: "Fodder = almost everything (incl. Clickers); fully subject to lethality rules. Apex = rare bosses immune to instant-death/Finishers." },
   { term: "Downed", def: "A PC at 0 HP: unconscious & Open. DC 10 CON saves each turn — 3 successes stabilize, 3 failures = dead." },
   { term: "Durability Check", def: "On an improvised-weapon hit, roll d4: base breaks on 1–3; Upgraded/Brawler weapons break only on 1." },
-  { term: "Massive Injury", def: "An enemy hit for 50%+ of its max HP rolls on the 1d8 injury table. 75%+ instantly kills Fodder." },
-  { term: "Resolve", def: "1 at levels 1-4, 2 at levels 5-8, 3 at levels 9-10. Refreshed on a long rest, +1 on a camp rest. Spend 1 Resolve to FORCE A REROLL of any d20 — yours or another player's — including attacks, checks, saves, and damage dice. Take the new result." },
+  { term: "Massive Injury", def: "An enemy hit for 50%+ of its max HP rolls on the 1d10 injury table. 75%+ instantly kills Fodder." },
+  { term: "Resolve", def: "Resolve = level ÷ 2, rounded up (max 5). Refreshes fully on a long rest. Spend 1 Resolve to: reroll any d20 (yours or one forced on you) and take the new result; OR make a Last Stand while Downed (act and move at half speed without stabilizing)." },
 ];
 
 /* ============================================================
@@ -433,7 +439,7 @@ function fmtMod(m) { return (m >= 0 ? "+" : "") + m; }
 /* AP gained per level (cumulative) & PB by level */
 const AP_BY_LEVEL = { 1: 2, 2: 4, 3: 6, 4: 8, 5: 10, 6: 13, 7: 16, 8: 19, 9: 22, 10: 25 };
 function pbForLevel(lvl) { return lvl >= 9 ? 4 : lvl >= 5 ? 3 : 2; }
-function resolveForLevel(lvl) { return Math.floor((lvl - 1) / 4) + 1; }
+function resolveForLevel(lvl) { return Math.min(5, Math.ceil(lvl / 2)); }
 
 function defaultCharacter() {
   return {
@@ -441,7 +447,7 @@ function defaultCharacter() {
     background: "",
     level: 1,
     abilities: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
-    currentHP: 11,
+    currentHP: 10,
     tempHP: 0,
     wearingArmor: false,
     weapons: [],
@@ -453,6 +459,9 @@ function defaultCharacter() {
     resolveCurrent: null,   // null = full (synced to max)
     weaponSlots: [null],    // rifle/bow/melee weapon ids (max 3)
     holsters: [null],       // handgun ids (max 2)
+    armor: null,            // { name } or null
+    deathSaves: { success: 0, fail: 0 },
+    customItems: [],        // [{id, name, desc, qty}]
   };
 }
 
@@ -473,6 +482,9 @@ function loadCharacter() {
       if (!Array.isArray(c.holsters)) {
         c.holsters = (c.equip && c.equip.handgun) ? [c.equip.handgun] : [null];
       }
+      if (c.armor === undefined) c.armor = null;
+      if (!c.deathSaves) c.deathSaves = { success: 0, fail: 0 };
+      if (!Array.isArray(c.customItems)) c.customItems = [];
       delete c.equip;
       return c;
     }
@@ -498,8 +510,14 @@ function save(flash = true) {
    4. DERIVE — stats + active effects + dashboard
    ============================================================ */
 function derive() {
+  const abilityBonuses = {};
+  character.perks.forEach(p => {
+    if (p.type === "abilityImprovement" && p.choice) {
+      abilityBonuses[p.choice] = (abilityBonuses[p.choice] || 0) + 1;
+    }
+  });
   const mods = {};
-  ABILITIES.forEach(a => mods[a] = mod(character.abilities[a]));
+  ABILITIES.forEach(a => mods[a] = mod(character.abilities[a] + (abilityBonuses[a] || 0)));
   const level = Number(character.level) || 1;
   const pb = pbForLevel(level);
 
@@ -660,7 +678,7 @@ function weaponBonuses(weapon) {
 }
 
 /* Weapon category -> Weapon Training choice that grants proficiency */
-const WEAPON_PROF_MAP = { blunt: "Blunt Melee", improvised: "Improvised", handgun: "Handguns", rifle: "Rifles", bow: "Bows" };
+const WEAPON_PROF_MAP = { blunt: "Blunt Melee", improvised: "Improvised", handgun: "Handguns", rifle: "Rifles", shotgun: "Shotguns", bow: "Bows" };
 function weaponProficient(w) {
   const bg = GAME_DATA.backgrounds[character.background];
   const allPerks = (bg ? bg.perks : []).concat(character.perks);
@@ -680,6 +698,7 @@ function ammoInvId(w) {
   if (w.category === "handgun") return "handgunAmmo";
   if (w.category === "bow") return "arrows";
   if (w.category === "rifle") return "longGunAmmo";
+  if (w.category === "shotgun") return "shotgunAmmo";
   return null;
 }
 
@@ -876,6 +895,9 @@ function renderCharacterTab() {
   // Temp HP
   document.getElementById("temp-hp-val").textContent = character.tempHP || 0;
 
+  // Death saves
+  renderDeathSaves();
+
   // derived stat cards
   const cards = [
     { lbl: "Armor Class", val: D.ac, accent: true },
@@ -900,6 +922,27 @@ function renderCharacterTab() {
       <input type="number" min="1" max="20" value="${character.abilities[a]}" data-ability="${a}" />
     </div>`;
   }).join("");
+}
+
+function renderDeathSaves() {
+  const block = document.getElementById("death-save-block");
+  if (character.currentHP > 0) {
+    block.hidden = true;
+    return;
+  }
+  if (!character.deathSaves) character.deathSaves = { success: 0, fail: 0 };
+  const ds = character.deathSaves;
+  block.hidden = false;
+  let status = "Downed";
+  if (ds.fail >= 3) status = "Dead";
+  else if (ds.success >= 3) status = "Stable";
+  document.getElementById("ds-status").textContent = status;
+  document.getElementById("ds-success-pips").innerHTML =
+    Array.from({ length: 3 }, (_, i) => `<span class="ds-pip success ${i < ds.success ? "filled" : ""}"></span>`).join("");
+  document.getElementById("ds-fail-pips").innerHTML =
+    Array.from({ length: 3 }, (_, i) => `<span class="ds-pip fail ${i < ds.fail ? "filled" : ""}"></span>`).join("");
+  const rollBtn = document.getElementById("ds-roll-btn");
+  rollBtn.hidden = (status !== "Downed");
 }
 
 /* ---- Actions dashboard ---- */
@@ -974,7 +1017,7 @@ function updatePerkChoiceField() {
   const sel = document.getElementById("perk-choice");
   if (def && def.needsChoice) {
     wrap.style.display = "";
-    sel.innerHTML = def.choices.map(c => `<option value="${c}">${c}</option>`).join("");
+    sel.innerHTML = def.choices.map(c => `<option value="${c}">${ABILITY_NAMES[c] || c}</option>`).join("");
   } else {
     wrap.style.display = "none";
     sel.innerHTML = "";
@@ -1059,7 +1102,7 @@ function renderWeapons() {
     const hasAmmo = w.maxAmmo > 0 || (w.ammoType && w.ammoType.trim());
     const effectiveSound = w.silenced ? "Quiet" : (w.sound || "");
     const soundCls = "sound " + effectiveSound.toLowerCase().replace(/\s+/g, "");
-    const canSilence = w.maxAmmo > 0; // firearms only
+    const canSilence = w.maxAmmo > 0 && w.category !== "rifle" && w.category !== "shotgun"; // handguns/bows only
     const haveSilencer = (character.inventory.silencer || 0) > 0;
     return `<div class="weapon-card cat-${w.category}">
       <div class="weapon-head">
@@ -1120,7 +1163,7 @@ const GENERAL_SLOTS = 12;
 const MAX_HOLSTERS = 2;
 const MAX_WEAPON_SLOTS = 3;
 const HOLSTER_CATS = ["handgun"];
-const WEAPON_SLOT_CATS = ["rifle", "bow", "blunt", "melee", "improvised"];
+const WEAPON_SLOT_CATS = ["rifle", "shotgun", "bow", "blunt", "melee", "improvised"];
 
 function ensureEquipArrays() {
   if (!Array.isArray(character.weaponSlots)) character.weaponSlots = [null];
@@ -1149,6 +1192,16 @@ function renderEquipSlots() {
   character.holsters.forEach((wid, i) => { html += equipSlotHtml("holster", i, wid, HOLSTER_CATS, "slot-holster", "Holster"); });
   if (character.holsters.length < MAX_HOLSTERS)
     html += `<button class="add-slot-btn" data-add-slot="holster">${icon("slot-holster")} + Add Holster</button>`;
+
+  if (character.armor) {
+    html += `<div class="equip-slot filled">
+      <div class="es-label">${icon("slot-holster")} Armor
+        <button class="es-remove" data-remove-armor title="Remove armor">✕</button></div>
+      <div class="es-armor-name">${esc(character.armor.name)}</div>
+    </div>`;
+  } else {
+    html += `<button class="add-slot-btn" data-add-slot="armor">${icon("slot-holster")} + Add Armor</button>`;
+  }
   root.innerHTML = html;
 }
 
@@ -1199,7 +1252,24 @@ function renderBackpack() {
 
   document.getElementById("slot-counter").textContent = `Slots used: ${Math.min(usedSlots, GENERAL_SLOTS)} / ${GENERAL_SLOTS}`;
 
+  renderCustomItems();
   renderCrafting();
+}
+
+/* Custom items */
+function renderCustomItems() {
+  const root = document.getElementById("custom-items");
+  if (!Array.isArray(character.customItems)) character.customItems = [];
+  root.innerHTML = character.customItems.map(it => `
+    <div class="inv-item has-qty" data-item-info="${esc(it.id)}">
+      <div class="inv-name">${esc(it.name)}</div>
+      <div class="inv-qty">${it.qty}</div>
+      <div class="inv-controls">
+        <button class="inv-btn minus" data-custom-qty="${esc(it.id)}:-1">−</button>
+        <button class="inv-btn plus" data-custom-qty="${esc(it.id)}:1">＋</button>
+        <button class="inv-btn" data-custom-del="${esc(it.id)}">✕</button>
+      </div>
+    </div>`).join("");
 }
 
 /* Max stack size per item: materials 5, ammo 10, crafted 2 (3 with Efficient Workflow). */
@@ -1409,11 +1479,24 @@ document.querySelectorAll(".hp-btn[data-hp]").forEach(btn => {
   btn.addEventListener("click", () => {
     const delta = Number(btn.dataset.hp);
     character.currentHP = Math.max(0, Math.min(D.maxHp, character.currentHP + delta));
+    if (character.currentHP > 0) character.deathSaves = { success: 0, fail: 0 };
     save(); renderSummary(); renderCharacterTab(); renderActionsDashboard();
   });
 });
+
+/* Death saves */
+document.getElementById("ds-roll-btn").addEventListener("click", () => {
+  if (!character.deathSaves) character.deathSaves = { success: 0, fail: 0 };
+  const ds = character.deathSaves;
+  const die = rollDie(20);
+  const success = die >= 10;
+  if (success) ds.success = Math.min(3, ds.success + 1);
+  else ds.fail = Math.min(3, ds.fail + 1);
+  addRollLog("Death Save", `d20 [${die}] vs DC 10`, die, die === 20 ? "crit" : die === 1 ? "fumble" : null);
+  save(); renderCharacterTab();
+});
 document.getElementById("hp-full").addEventListener("click", () => {
-  character.currentHP = D.maxHp; save(); renderSummary(); renderCharacterTab();
+  character.currentHP = D.maxHp; character.deathSaves = { success: 0, fail: 0 }; save(); renderSummary(); renderCharacterTab();
 });
 
 /* Temp HP controls */
@@ -1484,18 +1567,20 @@ document.getElementById("rest-menu").addEventListener("click", e => {
   if (!btn) return;
   const type = btn.dataset.rest;
   if (type === "short") {
-    character.tempHP = 0;
-    toast("Short rest taken.");
+    toast("Short Rest: tend wounds, craft, or recover short-rest abilities.");
   } else if (type === "camp") {
-    character.currentHP = D.maxHp;
+    const missing = D.maxHp - character.currentHP;
+    character.currentHP = Math.min(D.maxHp, character.currentHP + Math.ceil(missing / 2));
     character.tempHP = 0;
-    character.resolveCurrent = Math.min(D.resolveMax, character.resolveCurrent + 1);
-    toast("Camp rest taken — HP restored, +1 Resolve.");
+    if (character.currentHP > 0) character.deathSaves = { success: 0, fail: 0 };
+    toast("Camp rest taken — half of missing HP restored.");
   } else if (type === "long") {
     character.currentHP = D.maxHp;
     character.tempHP = 0;
     character.resolveCurrent = D.resolveMax;
-    toast("Long rest taken — HP and Resolve fully restored.");
+    character.statuses = [];
+    character.deathSaves = { success: 0, fail: 0 };
+    toast("Long rest taken — HP, Resolve restored and statuses cleared.");
   }
   document.getElementById("rest-menu").hidden = true;
   save(); renderAll();
@@ -1655,6 +1740,10 @@ document.getElementById("equip-slots").addEventListener("click", e => {
     ensureEquipArrays();
     if (addBtn.dataset.addSlot === "holster" && character.holsters.length < MAX_HOLSTERS) character.holsters.push(null);
     else if (addBtn.dataset.addSlot === "weapon" && character.weaponSlots.length < MAX_WEAPON_SLOTS) character.weaponSlots.push(null);
+    else if (addBtn.dataset.addSlot === "armor") {
+      character.armor = { name: "Armor" };
+      character.wearingArmor = true;
+    }
     save(); renderAll();
     return;
   }
@@ -1664,6 +1753,12 @@ document.getElementById("equip-slots").addEventListener("click", e => {
     const arr = group === "holster" ? character.holsters : character.weaponSlots;
     arr.splice(Number(idxStr), 1);
     if (arr.length === 0) arr.push(null); // always keep at least one slot
+    save(); renderAll();
+    return;
+  }
+  if (e.target.closest("[data-remove-armor]")) {
+    character.armor = null;
+    character.wearingArmor = false;
     save(); renderAll();
   }
 });
@@ -1682,9 +1777,37 @@ document.getElementById("crafting").addEventListener("click", e => {
   toast(`Crafted ${item.name}`);
 });
 
+/* Custom items: add / qty / delete */
+document.getElementById("add-custom-item-btn").addEventListener("click", () => {
+  const name = prompt("Item name:");
+  if (!name) return;
+  const desc = prompt("Item description (optional):") || "";
+  if (!Array.isArray(character.customItems)) character.customItems = [];
+  character.customItems.push({ id: "custom-" + Date.now() + "-" + Math.floor(Math.random() * 10000), name, desc, qty: 1 });
+  save(); renderAll();
+});
+document.getElementById("custom-items").addEventListener("click", e => {
+  const qtyBtn = e.target.closest("[data-custom-qty]");
+  if (qtyBtn) {
+    const [id, delta] = qtyBtn.dataset.customQty.split(":");
+    const it = character.customItems.find(i => i.id === id);
+    if (it) it.qty = Math.max(0, it.qty + Number(delta));
+    save(); renderAll();
+    return;
+  }
+  const delBtn = e.target.closest("[data-custom-del]");
+  if (delBtn) {
+    character.customItems = character.customItems.filter(i => i.id !== delBtn.dataset.customDel);
+    save(); renderAll();
+    return;
+  }
+  const info = e.target.closest("[data-item-info]");
+  if (info) showItemPopup(info.dataset.itemInfo, info);
+});
+
 /* Item info popup */
 function showItemPopup(id, anchor) {
-  const item = GAME_DATA.invById[id];
+  const item = GAME_DATA.invById[id] || character.customItems.find(it => it.id === id);
   if (!item) return;
   const popup = document.getElementById("item-popup");
   document.getElementById("item-popup-title").textContent = item.name;
