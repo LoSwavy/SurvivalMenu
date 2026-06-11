@@ -319,8 +319,8 @@ GAME_DATA.skillTrees = {
   scavenger: {
     id: "scavenger", category: "Survival", name: "Scavenger", flavor: "consistent finds",
     tiers: [
-      { name: "Keen Eye", cost: T1, desc: "Advantage on Investigation to search areas/bodies. Reroll one failed loot check per rest.",
-        dash: [{ cat: CAT.PASSIVE, name: "Keen Eye", desc: "Advantage on Investigation to search. Reroll one failed loot check per rest." }] },
+      { name: "Keen Eye", cost: T1, desc: "Advantage on Investigation to search areas/bodies.",
+        dash: [{ cat: CAT.PASSIVE, name: "Keen Eye", desc: "Advantage on Investigation to search." }] },
       { name: "Opportunist", cost: T2, desc: "When you succeed on a loot check, roll once more on the item table for a bonus item.",
         dash: [{ cat: CAT.PASSIVE, name: "Opportunist", desc: "A successful loot check grants one extra roll on the item table." }] },
       { name: "Scrap Magnet", cost: T3, desc: "When you find basic materials, roll a d4; on 2–4, gain +1 of that item. Once per loot check.",
@@ -330,8 +330,8 @@ GAME_DATA.skillTrees = {
   endure: {
     id: "endure", category: "Survival", name: "Endure the World", flavor: "durability, resilience",
     tiers: [
-      { name: "Hardened Survivor", cost: T1, desc: "Gain 5 + CON max HP. Advantage on saves vs environmental effects (cold, gas, heat, etc.).",
-        dash: [{ cat: CAT.PASSIVE, name: "Hardened Survivor", desc: "+ (5 + CON) max HP. Advantage on saves vs environmental hazards." }],
+      { name: "Hardened Survivor", cost: T1, desc: "Gain 5 + CON max HP.).",
+        dash: [{ cat: CAT.PASSIVE, name: "Hardened Survivor", desc: "+ (5 + CON) max HP." }],
         stat: (d, c) => { d.maxHp += 5 + c.mods.con; } },
       { name: "Grit", cost: T2, desc: "Once per short rest, when you'd be reduced to 0 HP, drop to 1 HP instead. Immune to Frightened.",
         dash: [{ cat: CAT.REACT, name: "Grit", desc: "1/short rest: drop to 1 HP instead of 0. Immune to Frightened." }] },
@@ -393,7 +393,7 @@ GAME_DATA.keywords = [
   { term: "Open", def: "Prone, stunned, downed, begging, knocked down, or concussed — a valid Finisher target." },
   { term: "Unaware", def: "A creature that hasn't noticed you. If a creature notices you, they will become Unaware if you stay hidden from them for a full round of combat." },
   { term: "Marked", def: "Tagged by Predator Instincts. +2 to hit it and bonus damage once per turn. One Mark at a time." },
-  { term: "Suppressed", def: "Pinned by Precision Marksman — moving triggers a reaction shot. Ends when it moves or you make another attack that isnt also Supressive Fire. Infected are immune to this condition. " },
+  { term: "Suppressed", def: "Pinned by Precision Marksman — moving triggers a reaction shot. Ends when it moves or you make another attack that isnt also Supressive Fire. Infected are immune to this condition." },
   { term: "Braced", def: "Made no movement this turn (needs Bob and Weave): can't be shoved/knocked prone/knocked down; can use Reactive Guard." },
   { term: "Finisher", def: "Instant kill (no roll) on a Fodder creature that is Open or Unaware and within range. Apex enemies are immune." },
   { term: "Aimed Shot", def: "Before a ranged attack, take −5 to hit for +10 damage. Once per attack, regardless of how many features grant it." },
