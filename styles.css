@@ -675,6 +675,19 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
 .modal-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px; border-top: 1px solid var(--line-soft); }
 
+.upgrade-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.upgrade-row:last-child { border-bottom: none; }
+.upgrade-hint { font-size: 0.7rem; color: var(--text-faint); margin-top: 2px; }
+.upgrade-stepper { display: flex; align-items: center; gap: 8px; }
+.upgrade-val { min-width: 24px; text-align: center; font-weight: 600; }
+
+.dice-help-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.dice-help-table th, .dice-help-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+.dice-help-table th { color: var(--text-faint); text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.6px; }
+.dice-help-table code { color: var(--accent, #7fd); }
+.dice-help-examples { margin-top: 10px; font-size: 0.78rem; line-height: 1.5; }
+.dice-help-examples code { color: var(--accent, #7fd); }
+
 /* ====================== TOAST ====================== */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
