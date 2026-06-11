@@ -1303,6 +1303,7 @@ function renderCustomItems() {
       <div class="inv-controls">
         <button class="inv-btn minus" data-custom-qty="${esc(it.id)}:-1">−</button>
         <button class="inv-btn plus" data-custom-qty="${esc(it.id)}:1">＋</button>
+        <button class="inv-btn" data-custom-edit="${esc(it.id)}">✎</button>
         <button class="inv-btn" data-custom-del="${esc(it.id)}">✕</button>
       </div>
     </div>`).join("");
@@ -1699,10 +1700,16 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
     const invId = ammoInvId(w);
     if (op === "reload") {
       const needed = (w.maxAmmo || 0) - (w.currentAmmo || 0);
-      const have = invId ? (character.inventory[invId] || 0) : Infinity;
+      const have = invId ? (character.inventory[invId] || 0) : 0;
       const take = Math.max(0, Math.min(needed, have));
+      if (needed <= 0) { toast("Already fully loaded."); return; }
+      if (take <= 0) {
+        toast(invId ? `No ${w.ammoType || "ammo"} in your bag.` : "No ammo source for this weapon.");
+        return;
+      }
       w.currentAmmo = (w.currentAmmo || 0) + take;
-      if (invId) character.inventory[invId] = (character.inventory[invId] || 0) - take;
+      character.inventory[invId] = (character.inventory[invId] || 0) - take;
+      toast(`Loaded ${take} from bag (${character.inventory[invId]} left).`);
     } else if (op === "1") {
       const have = invId ? (character.inventory[invId] || 0) : Infinity;
       if ((w.currentAmmo || 0) < (w.maxAmmo || 0) && have > 0) {
@@ -1838,25 +1845,31 @@ document.getElementById("custom-items").addEventListener("click", e => {
     });
     return;
   }
+  const editBtn = e.target.closest("[data-custom-edit]");
+  if (editBtn) {
+    openCustomItemModal(editBtn.dataset.customEdit);
+    return;
+  }
   const info = e.target.closest("[data-item-info]");
   if (info) showItemPopup(info.dataset.itemInfo);
 });
 
 /* Custom item modal: simple name + description form */
-function openCustomItemModal() {
+function openCustomItemModal(editId) {
+  const editing = editId ? character.customItems.find(i => i.id === editId) : null;
   showModal(`
-    <div class="modal-head"><h3>Add Custom Item</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-head"><h3>${editing ? "Edit Item" : "Add Custom Item"}</h3><button class="modal-close" data-modal-close>✕</button></div>
     <div class="modal-body">
       <label class="field"><span class="field-label">Name</span>
-        <input id="custom-item-name" type="text" placeholder="Item name" autofocus />
+        <input id="custom-item-name" type="text" placeholder="Item name" autofocus value="${esc(editing ? editing.name : "")}" />
       </label>
       <label class="field"><span class="field-label">Description (optional)</span>
-        <textarea id="custom-item-desc" rows="2" placeholder="What is it?"></textarea>
+        <textarea id="custom-item-desc" rows="2" placeholder="What is it?">${esc(editing ? (editing.desc || "") : "")}</textarea>
       </label>
     </div>
     <div class="modal-foot">
       <button class="btn ghost" data-modal-close>Cancel</button>
-      <button class="btn accent" id="custom-item-save">Add</button>
+      <button class="btn accent" id="custom-item-save">${editing ? "Save" : "Add"}</button>
     </div>
   `);
   const nameInput = document.getElementById("custom-item-name");
@@ -1865,7 +1878,12 @@ function openCustomItemModal() {
     if (!name) { nameInput.focus(); return; }
     const desc = document.getElementById("custom-item-desc").value.trim();
     if (!Array.isArray(character.customItems)) character.customItems = [];
-    character.customItems.push({ id: "custom-" + Date.now() + "-" + Math.floor(Math.random() * 10000), name, desc, qty: 1 });
+    if (editing) {
+      editing.name = name;
+      editing.desc = desc;
+    } else {
+      character.customItems.push({ id: "custom-" + Date.now() + "-" + Math.floor(Math.random() * 10000), name, desc, qty: 1 });
+    }
     save(); hideModal(); renderAll();
   };
   document.getElementById("custom-item-save").addEventListener("click", save_);
