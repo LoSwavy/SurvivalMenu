@@ -182,15 +182,11 @@
     <div class="panel-head loose">
       <h2>Backpack</h2>
       <span class="panel-hint" id="slot-counter">Slots used: 0</span>
+      <button class="add-slot-btn" id="upgrade-backpack-btn">⬆ Upgrade Backpack</button>
+      <button class="add-slot-btn" id="add-custom-item-btn">+ Add Custom Item</button>
     </div>
     <div id="general-slots" class="general-slots"></div>
     <div id="backpack" class="backpack"></div>
-
-    <div class="panel-head loose">
-      <h2>Custom Items</h2>
-      <button class="add-slot-btn" id="add-custom-item-btn">+ Add Custom Item</button>
-    </div>
-    <div id="custom-items" class="inv-grid"></div>
 
     <div class="panel-head loose">
       <h2>Crafting</h2>
@@ -225,6 +221,7 @@
       <div class="custom-roll">
         <input type="text" id="custom-roll-input" placeholder="e.g. 2d6 + 1d8 + STR - 2" autocomplete="off" />
         <button class="btn" id="custom-roll-btn">Roll</button>
+        <button class="btn ghost" id="dice-help-btn" title="Dice Notation Help">?</button>
       </div>
     </div>
   </section>
