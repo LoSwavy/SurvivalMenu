@@ -275,6 +275,26 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
 }
 .hp-bar-fill.low  { background: linear-gradient(90deg, #8a5a2a, var(--rust)); }
 .hp-bar-fill.crit { background: linear-gradient(90deg, var(--red-deep), var(--red)); }
+.death-save-block {
+  margin-top: 12px; grid-column: 1 / -1;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  background: linear-gradient(180deg, var(--bg-2), var(--card));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.ds-status { font-weight: 800; font-size: 1.05rem; color: var(--rust); min-width: 70px; }
+.ds-pips { display: flex; flex-direction: column; gap: 4px; }
+.ds-row { display: flex; align-items: center; gap: 8px; }
+.ds-row-label { font-size: 0.64rem; letter-spacing: 1px; color: var(--text-faint); min-width: 70px; }
+.ds-pip-group { display: flex; gap: 4px; }
+.ds-pip {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 1px solid var(--line); display: inline-block;
+  background: var(--bg-0);
+}
+.ds-pip.success.filled { background: var(--green); border-color: var(--green); }
+.ds-pip.fail.filled { background: var(--red); border-color: var(--red); }
 .hp-controls { display: grid; grid-template-columns: repeat(2, auto); gap: 8px; }
 .hp-btn {
   min-width: 56px; min-height: var(--tap);
@@ -851,6 +871,7 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
 }
 .add-slot-btn:hover { background: var(--green-glow); }
 .add-slot-btn .icon { width: 16px; height: 16px; }
+.equip-slot .es-armor-name { margin-top: 6px; font-size: 0.85rem; font-weight: 700; color: var(--text); }
 
 .general-slots { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 12px; }
 .gen-slot {
