@@ -1719,7 +1719,6 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
     } else if (op === "-1") {
       if ((w.currentAmmo || 0) > 0) {
         w.currentAmmo -= 1;
-        if (invId) character.inventory[invId] = (character.inventory[invId] || 0) + 1;
       }
     }
     save(); renderAll();
