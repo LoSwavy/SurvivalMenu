@@ -83,8 +83,8 @@ GAME_DATA.backgrounds = {
       { type: "skill", choice: "Perception" },
     ],
     backgroundPerk: {
-      name: "Kill Shot",
-      dash: [{ cat: CAT.PASSIVE, name: "Kill Shot (Aimed Shot: Rifles)", desc: "Before a rifle attack you may take −5 to hit for +10 damage (rifles only)." }],
+      name: "Deadshot",
+      dash: [{ cat: CAT.PASSIVE, name: "Deadshot (Aimed Shot: Rifles)", desc: "Before a rifle attack you may take −5 to hit for +10 damage (rifles only)." }],
       weapon: { match: (w) => w.category === "rifle", name: "Aimed Shot", desc: "−5 to hit, +10 damage (once per attack)." },
     },
     gear: {
@@ -174,7 +174,7 @@ GAME_DATA.survivorPerks = {
   },
   abilityImprovement: {
     type: "abilityImprovement", label: "Ability Improvement", repeatable: true, max: 2,
-    needsChoice: true, choices: ["str", "dex", "con", "int", "wis", "cha"],
+    needsChoice: true, choices: ["STR", "DEX", "CON", "INT", "WIS", "CHA"],
     effect: (ch) => `+1 ${ABILITY_NAMES[ch] || ch.toUpperCase()}.`,
   },
 };
@@ -354,15 +354,15 @@ GAME_DATA.inventory = [
   { group: "Ammunition", items: [
     { id: "handgunAmmo", name: "Handgun Ammo", icon: "inv-handgunAmmo", desc: "Ammunition for handguns." },
     { id: "longGunAmmo", name: "Rifle Ammo", icon: "inv-longGunAmmo", desc: "Ammunition for rifles." },
-    { id: "shotgunAmmo", name: "Shotgun Shells", icon: "inv-shotgunAmmo", desc: "Ammunition for shotguns." },
+    { id: "shotgunAmmo", name: "Shotgun Shells", icon: "invshotgunAmmo", desc: "Ammunition for shotguns." },
     { id: "arrows", name: "Arrows", icon: "inv-arrows", desc: "Ammunition for bows. Can sometimes be retrieved after combat." },
   ]},
   { group: "Crafted Items", items: [
     { id: "bandage", name: "Bandage", icon: "inv-bandage", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Heals 1d4 + CON when used. Crafting consumes 1 Rag + 1 Alcohol." },
     { id: "molotov", name: "Molotov", icon: "inv-molotov", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Thrown weapon: 1d10 fire damage; DC 15 DEX save vs catching fire. Crafting consumes 1 Rag + 1 Alcohol." },
-    { id: "shiv", name: "Shiv", icon: "inv-shiv", recipe: "Scrap + Binding", craft: { scrap: 1, binding: 1 }, desc: "Instant kill vs an Unaware creature with max HP ≤ 30; otherwise the target makes a DC 15 CON save or dies. Crafting consumes 1 Scrap + 1 Binding." },
+    { id: "shiv", name: "Shiv", icon: "inv-shiv", recipe: "Scrap + Binding", craft: { scrap: 1, binding: 1 }, desc: "Instant kill vs an Unaware creature with max HP ≤ 30. Crafting consumes 1 Scrap + 1 Binding." },
     { id: "silencer", name: "Silencer", icon: "inv-silencer", recipe: "Rag + Bottle", craft: { rag: 1, bottle: 1 }, desc: "Attach to a firearm to make it Quiet, regardless of its normal sound level. Crafting consumes 1 Rag + 1 Bottle." },
-    { id: "upgradedWeapon", name: "Upgraded Improv. Weapon", icon: "inv-upgradedWeapon", recipe: "2× Scrap + Binding", craft: { scrap: 2, binding: 1 }, desc: "An improvised weapon reinforced to deal 1d10 damage and only break on a roll of 1. Crafting consumes 2 Scrap + 1 Binding." },
+    { id: "upgradedWeapon", name: "Upgraded Improv. Weapon", icon: "inv-upgradedWeapon", recipe: "2× Scrap + Binding", craft: { scrap: 2, binding: 1 }, desc: "An improvised weapon reinforced to deal 1d10 damage and only break on a roll of 1. Crafting consumes 2 Scrap + 1 Binding, as well as an improvised weapon" },
     { id: "medkit", name: "Medkit", icon: "inv-medkit", recipe: "Found only", desc: "Heals 2d6 + CON when used. Cannot be crafted — found only." },
   ]},
 ];
@@ -391,11 +391,11 @@ GAME_DATA.statusPresets = [
 GAME_DATA.keywords = [
   { term: "Hidden", def: "Unseen after a successful Stealth check behind cover/concealment. You stop being Hidden when you attack or are seen." },
   { term: "Open", def: "Prone, stunned, downed, begging, knocked down, or concussed — a valid Finisher target." },
-  { term: "Unaware", def: "A creature that hasn't noticed you (hasn't acted against you, or you're Hidden from it)." },
+  { term: "Unaware", def: "A creature that hasn't noticed you. If a creature notices you, they will become Unaware if you stay hidden from them for a full round of combat." },
   { term: "Marked", def: "Tagged by Predator Instincts. +2 to hit it and bonus damage once per turn. One Mark at a time." },
-  { term: "Suppressed", def: "Pinned by Precision Marksman — can't move; moving triggers a reaction shot. Ends when it moves or your next turn starts." },
+  { term: "Suppressed", def: "Pinned by Precision Marksman — moving triggers a reaction shot. Ends when it moves or you make another attack that isnt also Supressive Fire. Infected are immune to this condition. " },
   { term: "Braced", def: "Made no movement this turn (needs Bob and Weave): can't be shoved/knocked prone/knocked down; can use Reactive Guard." },
-  { term: "Finisher", def: "Instant kill (no roll) on a Fodder creature that is Open or Unaware. Apex enemies are immune." },
+  { term: "Finisher", def: "Instant kill (no roll) on a Fodder creature that is Open or Unaware and within range. Apex enemies are immune." },
   { term: "Aimed Shot", def: "Before a ranged attack, take −5 to hit for +10 damage. Once per attack, regardless of how many features grant it." },
   { term: "Maneuver DC", def: "8 + PB + relevant modifier (STR or DEX). The save DC for maneuvers a feature forces on a target." },
   { term: "Fodder / Apex", def: "Fodder = almost everything (incl. Clickers); fully subject to lethality rules. Apex = rare bosses immune to instant-death/Finishers." },
