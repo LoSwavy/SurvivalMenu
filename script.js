@@ -361,7 +361,7 @@ GAME_DATA.inventory = [
   ]},
   { group: "Crafted Items", items: [
     { id: "bandage", name: "Bandage", icon: "inv-bandage", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Heals 1d4 + CON when used. Crafting consumes 1 Rag + 1 Alcohol." },
-    { id: "molotov", name: "Molotov", icon: "inv-molotov", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Thrown (DEX) weapon: 1d10 fire on a hit; creatures within 5 ft make a DC 15 DEX save or catch fire (1d4/turn). Single-use. Crafting perks can't make it free, double it, or improve it to Hardened/Masterwork. Crafting consumes 1 Rag + 1 Alcohol." },
+    { id: "molotov", name: "Molotov", icon: "inv-molotov", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Thrown (DEX) weapon: 1d10 fire on a hit; creatures within 5 ft make a DC 15 DEX save or catch fire (1d4/turn). Single-use. Crafting consumes 1 Rag + 1 Alcohol." },
     { id: "shiv", name: "Shiv", icon: "inv-shiv", recipe: "Scrap + Binding", craft: { scrap: 1, binding: 1 }, desc: "1d8 piercing, Quiet. Instant kill vs an Unaware creature with max HP ≤ 30 (no roll); tougher targets are immune and just take the 1d8. Breaks after use unless Hardened (resists once) or Masterwork (resists twice). Crafting consumes 1 Scrap + 1 Binding." },
     { id: "silencer", name: "Makeshift Suppressor", icon: "inv-silencer", recipe: "Rag + Bottle", craft: { rag: 1, bottle: 1 }, desc: "Handgun attachment. Its shots become Quiet. Improvised and fragile: each shot, roll a d6 — on a 1 it's spent (that shot still fires Quiet; the gun is Very Loud afterward). About six quiet shots on average. Crafting consumes 1 Rag + 1 Bottle." },
     { id: "upgradedWeapon", name: "Upgraded Improv. Weapon", icon: "inv-upgradedWeapon", recipe: "2× Scrap + Binding", craft: { scrap: 2, binding: 1 }, desc: "An improvised weapon reinforced to deal 1d10 damage and only break on a roll of 1. Crafting consumes 2 Scrap + 1 Binding, as well as an improvised weapon" },
@@ -791,7 +791,7 @@ function totalCraftedQty(baseId) {
   return QUALITY_TIERS.reduce((s, q) => s + (character.inventory[qualityInvKey(baseId, q)] || 0), 0);
 }
 function isCraftable(item) { return !!item.craft || item.id === "medkit"; }
-function canImproveQuality(item) { return !!item.craft && item.id !== "molotov"; }
+function canImproveQuality(item) { return !!item.craft; }
 
 /* Resolve a weapon's attachment list into full objects (base catalog + custom). */
 function weaponAttachments(w) {
@@ -1836,20 +1836,27 @@ function groupIcon(name) {
 }
 
 /* ---- Crafting ---- */
+/* Per-item chosen quality in the crafting panel (session-only UI state). */
+const craftQuality = {};
 function renderCrafting() {
   const root = document.getElementById("crafting");
   const craftables = GAME_DATA.invById ? GAME_DATA.inventory.flatMap(g => g.items).filter(it => it.craft) : [];
   root.innerHTML = craftables.map(it => {
     const have = (id, n) => (character.inventory[id] || 0) >= n;
     const canCraft = Object.entries(it.craft).every(([id, n]) => have(id, n));
-    let qNote = "";
+    let qualitySelect = "";
     if (canImproveQuality(it)) {
-      if (canMakeQuality("masterwork")) qNote = ' <span class="quality-badge masterwork">Masterwork</span>';
-      else if (canMakeQuality("hardened")) qNote = ' <span class="quality-badge hardened">Hardened</span>';
+      const opts = QUALITY_TIERS.filter(q => canMakeQuality(q)).map(q => {
+        const label = q ? qualityLabel(q) : "Standard";
+        const sel = craftQuality[it.id] === q ? " selected" : "";
+        return `<option value="${q}"${sel}>${label}</option>`;
+      }).join("");
+      qualitySelect = `<select class="craft-quality" data-craft-quality="${it.id}">${opts}</select>`;
     }
     return `<div class="craft-card">
-      <div class="cc-name">${icon(it.icon)} ${esc(it.name)}${qNote}</div>
+      <div class="cc-name">${icon(it.icon)} ${esc(it.name)}</div>
       <div class="cc-recipe">${esc(it.recipe)}</div>
+      ${qualitySelect}
       <button data-craft="${it.id}" ${canCraft ? "" : "disabled"}>Craft</button>
     </div>`;
   }).join("");
@@ -2384,11 +2391,11 @@ document.getElementById("crafting").addEventListener("click", e => {
   const item = GAME_DATA.invById[id];
   const have = Object.entries(item.craft).every(([mid, n]) => (character.inventory[mid] || 0) >= n);
   if (!have) return;
-  // Determine quality tier based on Master Craftsman perks (molotovs can't be improved).
+  // Use the quality chosen in the dropdown (gated by Master Craftsman perks).
   let quality = "";
   if (canImproveQuality(item)) {
-    if (canMakeQuality("masterwork")) quality = "masterwork";
-    else if (canMakeQuality("hardened")) quality = "hardened";
+    const chosen = craftQuality[id] || "";
+    quality = canMakeQuality(chosen) ? chosen : "";
   }
   const invKey = qualityInvKey(id, quality);
   const isNewStack = (character.inventory[invKey] || 0) === 0;
@@ -2401,6 +2408,11 @@ document.getElementById("crafting").addEventListener("click", e => {
   const qLabel = qualityLabel(quality);
   save(); renderAll();
   toast(`Crafted ${qLabel ? qLabel + " " : ""}${item.name}`);
+});
+document.getElementById("crafting").addEventListener("change", e => {
+  const sel = e.target.closest("[data-craft-quality]");
+  if (!sel) return;
+  craftQuality[sel.dataset.craftQuality] = sel.value;
 });
 
 /* Custom items: add / qty / delete */
