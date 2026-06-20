@@ -45,17 +45,19 @@ const GAME_DATA = {};
 /* --- Weapon templates (defined first: background gear references them) ---- */
 GAME_DATA.weaponTemplates = {
   "": { name: "", category: "rifle" },
-  "Bolt-Action Rifle": { name: "Bolt-Action Rifle", category: "rifle", damage: "2d8 + DEX", range: "300 ft", ammoType: "Rifle Ammo", maxAmmo: 6, sound: "Very Loud" },
-  "Hunting Rifle":      { name: "Hunting Rifle", category: "rifle", damage: "2d8 + DEX", range: "250 ft", ammoType: "Rifle Ammo", maxAmmo: 5, sound: "Very Loud" },
-  "Shotgun":            { name: "Shotgun", category: "shotgun", damage: "2d6", ammoType: "Shotgun Shells", maxAmmo: 2, range: "Short", sound: "Very Loud" },
-  "9mm Pistol":         { name: "9mm Pistol", category: "handgun", damage: "2d6 + DEX", range: "60 ft", ammoType: "Handgun Ammo", maxAmmo: 12, sound: "Very Loud" },
-  "Snubnose Revolver":  { name: "Snubnose Revolver", category: "handgun", damage: "2d6 + DEX", range: "40 ft", ammoType: "Handgun Ammo", maxAmmo: 6, sound: "Very Loud" },
-  "Hunting Bow":        { name: "Hunting Bow", category: "bow", damage: "1d8 + DEX", range: "120 ft", ammoType: "Arrows", maxAmmo: 8, sound: "Quiet" },
+  "Bolt-Action Rifle": { name: "Bolt-Action Rifle", category: "rifle", damage: "2d8 + DEX", range: "80 / 200 ft", ammoType: "Rifle Ammo", maxAmmo: 6, sound: "Very Loud" },
+  "Hunting Rifle":      { name: "Hunting Rifle", category: "rifle", damage: "2d8 + DEX", range: "80 / 200 ft", ammoType: "Rifle Ammo", maxAmmo: 5, sound: "Very Loud" },
+  "Shotgun":            { name: "Shotgun", category: "shotgun", damage: "2d10", ammoType: "Shotgun Shells", maxAmmo: 2, range: "15 / 30 ft", sound: "Very Loud", note: "Spread: targets in the cone make a DEX save vs your Maneuver DC for half damage; Advantage past 15 ft, nothing past 30 ft." },
+  "9mm Pistol":         { name: "9mm Pistol", category: "handgun", damage: "2d6 + DEX", range: "40 / 80 ft", ammoType: "Handgun Ammo", maxAmmo: 12, sound: "Very Loud" },
+  "Snubnose Revolver":  { name: "Snubnose Revolver", category: "handgun", damage: "2d6 + DEX", range: "40 / 80 ft", ammoType: "Handgun Ammo", maxAmmo: 6, sound: "Very Loud", note: "Revolver: cannot take an Extended Magazine." },
+  "Hunting Bow":        { name: "Hunting Bow", category: "bow", damage: "1d8 + DEX", range: "60 / 120 ft", ammoType: "Arrows", maxAmmo: 8, sound: "Quiet", note: "Two-Handed." },
+  "Combat Bow":         { name: "Combat Bow", category: "bow", damage: "1d12 + DEX", range: "60 / 120 ft", ammoType: "Arrows", maxAmmo: 8, sound: "Quiet", note: "Two-Handed. Recover Arrow: as a bonus action, roll a Durability Check (d4) on a fired arrow — recovered on 3–4, broken on 1–2." },
   "Metal Pipe":         { name: "Metal Pipe", category: "blunt", damage: "1d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
   "Baseball Bat":       { name: "Baseball Bat", category: "blunt", damage: "1d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
+  "Fire Axe":           { name: "Fire Axe", category: "melee", damage: "1d8 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", note: "On a max damage die, roll d4: 1–2 Leg Ruined, 3–4 Arm Ruined (Injury table)." },
   "Machete":            { name: "Machete", category: "melee", damage: "1d8 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
-  "Improvised Weapon":  { name: "Improvised Weapon", category: "improvised", damage: "1d4 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
-  "Upgraded Improvised":{ name: "Upgraded Improvised Weapon", category: "improvised", damage: "1d10 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Loud", upgrades: ["Upgraded (breaks on 1)"] },
+  "Improvised Weapon":  { name: "Improvised Weapon", category: "improvised", damage: "1d4 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", note: "Durability Check (d4) on each hit: breaks on 1–3." },
+  "Upgraded Improvised":{ name: "Upgraded Improvised Weapon", category: "improvised", damage: "1d10 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", upgraded: true, note: "Durability Check (d4) on each hit: breaks only on a 1." },
 };
 const WEAPON_TYPE_LABEL = { rifle: "Rifle", shotgun: "Shotgun", handgun: "Handgun", bow: "Bow", blunt: "Blunt Melee", improvised: "Improvised Melee", melee: "Melee" };
 
@@ -88,7 +90,7 @@ GAME_DATA.backgrounds = {
       weapon: { match: (w) => w.category === "rifle", name: "Aimed Shot", desc: "−5 to hit, +10 damage (once per attack)." },
     },
     gear: {
-      weapons: [tmplWeapon("Bolt-Action Rifle", "rifle", { upgrades: ["Scope Attachment"] })],
+      weapons: [tmplWeapon("Bolt-Action Rifle", "rifle", { attachments: [{ key: "scope", name: "Scope" }] })],
       inventory: { longGunAmmo: 6 },
     },
   },
@@ -191,19 +193,19 @@ GAME_DATA.skillTrees = {
     tiers: [
       { name: "Iron Fist", cost: T1, desc: "Fists & blunt melee are +1 weapons. Once per turn, after a melee attack, Grapple a creature in reach as a bonus action (contested Athletics).",
         dash: [{ cat: CAT.BONUS, name: "Grapple", desc: "After a melee attack, grapple a creature in reach (contested Athletics)." }],
-        weapon: { match: (w) => w.category === "blunt", name: "Iron Fist (+1)", desc: "Counts as a +1 weapon." } },
+        weapon: { match: (w) => w.category === "blunt", name: "Iron Fist (+1)", desc: "Counts as a +1 weapon.", toHit: 1, dmg: 1, group: "cqc" } },
       { name: "Break Them Down", cost: T2, desc: "Once per turn on a melee hit: push 5 ft; or target makes a STR save vs your Maneuver DC — on a fail, Disadvantage on its next attack or drops a held item.",
         dash: [{ cat: CAT.PASSIVE, name: "Break Them Down", desc: "On a melee hit (1/turn): push 5 ft, or force STR save vs your Maneuver DC to debuff/disarm." }] },
       { name: "Chain Fighter", cost: T3, desc: "Fists & blunt melee become +2 weapons. When you drop a creature to 0 HP, move up to 10 ft and make one free melee attack.",
         dash: [{ cat: CAT.PASSIVE, name: "Chain Fighter", desc: "On a melee kill: move 10 ft and make one free melee attack." }],
-        weapon: { match: (w) => w.category === "blunt", name: "Chain Fighter (+2)", desc: "Counts as a +2 weapon (overrides Iron Fist)." } },
+        weapon: { match: (w) => w.category === "blunt", name: "Chain Fighter (+2)", desc: "Counts as a +2 weapon (overrides Iron Fist).", toHit: 2, dmg: 2, group: "cqc" } },
     ],
   },
   handgun: {
     id: "handgun", category: "Combat", name: "Handgun Specialist", flavor: "quickdraw, precision sidearm",
     tiers: [
       { name: "Precision Shooter", cost: T1, desc: "+2 to attack rolls with handguns. Ignore Disadvantage from long range with handguns.",
-        weapon: { match: (w) => w.category === "handgun", name: "Precision Shooter", desc: "+2 to attack rolls; ignore long-range Disadvantage." } },
+        weapon: { match: (w) => w.category === "handgun", name: "Precision Shooter", desc: "+2 to attack rolls; ignore long-range Disadvantage.", toHit: 2 } },
       { name: "Tactical Reload", cost: T2, desc: "Reload a handgun as part of your Attack. You gain Aimed Shot with handguns.",
         weapon: { match: (w) => w.category === "handgun", name: "Tactical Reload + Aimed Shot", desc: "Reload as part of Attack. Aimed Shot: −5 to hit, +10 damage." } },
       { name: "Double Tap", cost: T3, desc: "When you Attack with a handgun, you may fire twice. Both shots hit the same target unless the first drops it to 0 HP. Each shot spends ammo.",
@@ -215,7 +217,7 @@ GAME_DATA.skillTrees = {
     id: "marksman", category: "Combat", name: "Precision Marksman", flavor: "long-range control & punishment",
     tiers: [
       { name: "Marksman's Focus", cost: T1, desc: "Long guns are +1 weapons. If you make no movement on your turn, gain Advantage on your next long-gun attack.",
-        weapon: { match: (w) => w.category === "rifle", name: "Marksman's Focus (+1)", desc: "+1 weapon. Advantage on your next shot if you didn't move this turn." } },
+        weapon: { match: (w) => w.category === "rifle", name: "Marksman's Focus (+1)", desc: "+1 weapon. Advantage on your next shot if you didn't move this turn.", toHit: 1, dmg: 1 } },
       { name: "Suppressive Fire", cost: T2, desc: "Instead of attacking, spend a shot to Suppress a target you can see (WIS save vs your Maneuver DC). If it moves, react to shoot it with Advantage (crit 18–20).",
         dash: [{ cat: CAT.ACTION, name: "Suppressive Fire", desc: "Spend a shot to Suppress a visible target (WIS save vs Maneuver DC). Moving triggers a reaction shot with Advantage." }] },
       { name: "Zeroed In", cost: T3, desc: "Your long guns ignore half and three-quarters cover. A Suppressed target you hit takes +10 damage.",
@@ -345,11 +347,11 @@ GAME_DATA.skillTrees = {
 /* --- Inventory definitions ----------------------------------------------- */
 GAME_DATA.inventory = [
   { group: "Crafting Materials", items: [
-    { id: "rag", name: "Rag", icon: "inv-rag", desc: "A scrap of cloth. Used to craft bandages, molotovs and silencers." },
+    { id: "rag", name: "Rag", icon: "inv-rag", desc: "A scrap of cloth. Used to craft bandages, molotovs and suppressors." },
     { id: "scrap", name: "Scrap", icon: "inv-scrap", desc: "Bits of metal and parts. Used to craft shivs and upgraded improvised weapons." },
     { id: "alcohol", name: "Alcohol", icon: "inv-alcohol", desc: "High-proof liquid. Used to craft bandages and molotovs." },
     { id: "binding", name: "Binding", icon: "inv-binding", desc: "Tape, cord or wire. Used to craft shivs and upgraded improvised weapons." },
-    { id: "bottle", name: "Bottle", icon: "inv-bottle", desc: "An empty glass bottle. Used to craft silencers." },
+    { id: "bottle", name: "Bottle", icon: "inv-bottle", desc: "An empty glass bottle. Used to craft suppressors." },
   ]},
   { group: "Ammunition", items: [
     { id: "handgunAmmo", name: "Handgun Ammo", icon: "inv-handgunAmmo", desc: "Ammunition for handguns." },
@@ -359,9 +361,9 @@ GAME_DATA.inventory = [
   ]},
   { group: "Crafted Items", items: [
     { id: "bandage", name: "Bandage", icon: "inv-bandage", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Heals 1d4 + CON when used. Crafting consumes 1 Rag + 1 Alcohol." },
-    { id: "molotov", name: "Molotov", icon: "inv-molotov", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Thrown weapon: 1d10 fire damage; DC 15 DEX save vs catching fire. Crafting consumes 1 Rag + 1 Alcohol." },
-    { id: "shiv", name: "Shiv", icon: "inv-shiv", recipe: "Scrap + Binding", craft: { scrap: 1, binding: 1 }, desc: "Instant kill vs an Unaware creature with max HP ≤ 30. Crafting consumes 1 Scrap + 1 Binding." },
-    { id: "silencer", name: "Silencer", icon: "inv-silencer", recipe: "Rag + Bottle", craft: { rag: 1, bottle: 1 }, desc: "Attach to a firearm to make it Quiet, regardless of its normal sound level. Crafting consumes 1 Rag + 1 Bottle." },
+    { id: "molotov", name: "Molotov", icon: "inv-molotov", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Thrown (DEX) weapon: 1d10 fire on a hit; creatures within 5 ft make a DC 15 DEX save or catch fire (1d4/turn). Single-use. Crafting perks can't make it free, double it, or improve it to Hardened/Masterwork. Crafting consumes 1 Rag + 1 Alcohol." },
+    { id: "shiv", name: "Shiv", icon: "inv-shiv", recipe: "Scrap + Binding", craft: { scrap: 1, binding: 1 }, desc: "1d8 piercing, Quiet. Instant kill vs an Unaware creature with max HP ≤ 30 (no roll); tougher targets are immune and just take the 1d8. Breaks after use unless Hardened (resists once) or Masterwork (resists twice). Crafting consumes 1 Scrap + 1 Binding." },
+    { id: "silencer", name: "Makeshift Suppressor", icon: "inv-silencer", recipe: "Rag + Bottle", craft: { rag: 1, bottle: 1 }, desc: "Handgun attachment. Its shots become Quiet. Improvised and fragile: each shot, roll a d6 — on a 1 it's spent (that shot still fires Quiet; the gun is Very Loud afterward). About six quiet shots on average. Crafting consumes 1 Rag + 1 Bottle." },
     { id: "upgradedWeapon", name: "Upgraded Improv. Weapon", icon: "inv-upgradedWeapon", recipe: "2× Scrap + Binding", craft: { scrap: 2, binding: 1 }, desc: "An improvised weapon reinforced to deal 1d10 damage and only break on a roll of 1. Crafting consumes 2 Scrap + 1 Binding, as well as an improvised weapon" },
     { id: "medkit", name: "Medkit", icon: "inv-medkit", recipe: "Found only", desc: "Heals 2d6 + CON when used. Cannot be crafted — found only." },
   ]},
@@ -369,6 +371,27 @@ GAME_DATA.inventory = [
 /* flat lookup */
 GAME_DATA.invById = {};
 GAME_DATA.inventory.forEach(g => g.items.forEach(i => { GAME_DATA.invById[i.id] = i; }));
+
+/* --- Weapon attachments (rulebook p.23) ----------------------------------
+   Each: key, name, desc, fits(category) compatibility, and optional
+   mechanical fields — toHit (flat bonus) and sound (overrides the weapon's
+   sound to this level while attached). Players can also add custom ones.   */
+GAME_DATA.attachments = [
+  { key: "suppressor", name: "Makeshift Suppressor", fits: c => c === "handgun", sound: "Quiet",
+    desc: "Shots become Quiet. Fragile: each shot roll a d6 — on a 1 it's spent (gun goes Very Loud after)." },
+  { key: "scope", name: "Scope", fits: c => c === "rifle" || c === "bow",
+    desc: "Removes the Disadvantage for attacking beyond optimal range, out to maximum range. (Long Guns & Combat Bow.)" },
+  { key: "choke", name: "Choke", fits: c => c === "shotgun",
+    desc: "Tightens the shot into a narrow cone that carries to full range with no distance penalty (no save Advantage at range)." },
+  { key: "extmag", name: "Extended Magazine", fits: (c, w) => (c === "rifle" || c === "handgun") && !/revolver/i.test((w && w.name) || ""),
+    desc: "The weapon fires several more rounds before it needs reloading. (Long Guns & handguns — not revolvers.)" },
+  { key: "reddot", name: "Red Dot Sight", fits: c => c === "handgun", toHit: 1,
+    desc: "+1 to hit. (Handguns.)" },
+  { key: "grip", name: "Grip", fits: () => true, toHit: 1,
+    desc: "+1 to hit. (Fits any weapon.)" },
+];
+GAME_DATA.attachmentByKey = {};
+GAME_DATA.attachments.forEach(a => { GAME_DATA.attachmentByKey[a.key] = a; });
 
 /* --- Status effect presets ----------------------------------------------- */
 GAME_DATA.statusPresets = [
@@ -420,9 +443,11 @@ function tmplWeapon(name, category, overrides = {}) {
     maxAmmo: base.maxAmmo || 0,
     currentAmmo: base.maxAmmo || 0,
     sound: base.sound || "Medium",
-    silenced: false,
-    upgrades: (base.upgrades || []).slice(),
-    notes: "",
+    upgraded: !!base.upgraded,        // upgraded improvised weapon (breaks only on 1)
+    attachments: [],                  // [{key?, name, desc, toHit, sound, custom}]
+    quality: "",                      // "" | "hardened" | "masterwork"
+    breakResistUsed: 0,               // durability charges spent off Hardened/Masterwork
+    notes: base.note || "",
   };
   return Object.assign(w, overrides);
 }
@@ -488,6 +513,29 @@ function loadCharacter() {
       if (!Array.isArray(c.customItems)) c.customItems = [];
       if (typeof c.backpackSlots !== "number" || c.backpackSlots < 12) c.backpackSlots = 12;
       if (c.backpackSlots > 20) c.backpackSlots = 20;
+      // Migrate weapons to the structured attachment + quality model.
+      if (Array.isArray(c.weapons)) c.weapons.forEach(w => {
+        if (!Array.isArray(w.attachments)) w.attachments = [];
+        if (typeof w.quality !== "string") w.quality = "";
+        if (typeof w.breakResistUsed !== "number") w.breakResistUsed = 0;
+        if (typeof w.upgraded !== "boolean") w.upgraded = /upgraded/i.test(w.name || "") || /1d10/.test(w.damage || "") && w.category === "improvised";
+        // Legacy freeform upgrades[] → custom attachments.
+        if (Array.isArray(w.upgrades) && w.upgrades.length) {
+          w.upgrades.forEach(label => {
+            if (!label) return;
+            const low = String(label).toLowerCase();
+            const base = GAME_DATA.attachments.find(a => low.includes(a.key) || low.includes(a.name.toLowerCase()));
+            if (base && !w.attachments.some(a => a.key === base.key)) w.attachments.push({ key: base.key, name: base.name });
+            else if (!base) w.attachments.push({ name: String(label), desc: "", custom: true });
+          });
+        }
+        delete w.upgrades;
+        // Legacy silenced flag → suppressor attachment.
+        if (w.silenced && !w.attachments.some(a => a.key === "suppressor")) {
+          w.attachments.push({ key: "suppressor", name: "Makeshift Suppressor" });
+        }
+        delete w.silenced;
+      });
       delete c.equip;
       return c;
     }
@@ -648,10 +696,13 @@ function buildDashboard(sources, d) {
   // ---- Inventory-driven actions ----
   const inv = character.inventory;
   const healCat = d.flags.healAsBonus ? CAT.BONUS : CAT.ACTION;
-  if ((inv.bandage || 0) > 0) push(healCat, "Use Bandage", `Heal 1d4 + CON. (${inv.bandage} carried)`, "Backpack");
+  // Master Craftsman improves crafted bandages: Refined Skill +1, Hardened +2, Masterwork +3.
+  const craftedHealBonus = isUnlocked("mastercraft", 3) ? 3 : isUnlocked("mastercraft", 2) ? 2 : isUnlocked("mastercraft", 1) ? 1 : 0;
+  const craftNote = craftedHealBonus ? ` Crafted: +${craftedHealBonus} healing (Master Craftsman).` : "";
+  if ((inv.bandage || 0) > 0) push(healCat, "Use Bandage", `Heal 1d4 + CON.${craftNote} (${inv.bandage} carried)`, "Backpack");
   if ((inv.medkit || 0) > 0) push(healCat, "Use Medkit", `Heal 2d6 + CON per use. (${inv.medkit} carried)`, "Backpack");
   if ((inv.molotov || 0) > 0) push(CAT.ACTION, "Throw Molotov", `1d10 fire; DC 15 DEX save vs catching fire. (${inv.molotov} carried)`, "Backpack");
-  if ((inv.shiv || 0) > 0) push(CAT.ACTION, "Use Shiv", `Instant kill vs Unaware (max HP ≤ 30); else DC 15 CON or die. (${inv.shiv} carried)`, "Backpack");
+  if ((inv.shiv || 0) > 0) push(CAT.ACTION, "Use Shiv", `Quiet. Instant kill vs an Unaware target (max HP ≤ 30); targets over 30 max HP just take 1d8. Breaks after use unless Hardened/Masterwork. (${inv.shiv} carried)`, "Backpack");
 
   // ---- All dash entries from sources ----
   sources.forEach(s => {
@@ -696,7 +747,93 @@ function weaponAbility(w) {
   return (w.category === "blunt" || w.category === "improvised" || w.category === "melee") ? "str" : "dex";
 }
 function weaponToHitMod(w) {
-  return D.mods[weaponAbility(w)] + (weaponProficient(w) ? D.pb : 0);
+  return D.mods[weaponAbility(w)] + (weaponProficient(w) ? D.pb : 0) + weaponFlatBonuses(w).toHit;
+}
+
+/* Is a skill-tree tier unlocked? (tier is 1-based) */
+function isUnlocked(treeId, tier) { return (character.unlocked[treeId] || 0) >= tier; }
+
+/* Quality tier helpers (Hardened / Masterwork — rulebook p.23-24) */
+function qualityToHit(q) { return q === "masterwork" ? 3 : q === "hardened" ? 2 : 0; }
+function qualityLabel(q) { return q === "masterwork" ? "Masterwork" : q === "hardened" ? "Hardened" : ""; }
+function qualityResists(q) { return q === "masterwork" ? 2 : q === "hardened" ? 1 : 0; }
+/* Do you have the perk to make this quality? II = Hardened, III = Masterwork. */
+function canMakeQuality(q) {
+  if (q === "hardened") return isUnlocked("mastercraft", 2);
+  if (q === "masterwork") return isUnlocked("mastercraft", 3);
+  return true;
+}
+
+/* Resolve a weapon's attachment list into full objects (base catalog + custom). */
+function weaponAttachments(w) {
+  return (w.attachments || []).map(a => {
+    const base = a.key ? GAME_DATA.attachmentByKey[a.key] : null;
+    return Object.assign({}, base, a);
+  });
+}
+function attachmentFits(att, w) {
+  return typeof att.fits === "function" ? att.fits(w.category, w) : true;
+}
+
+/* Effective sound after attachments (a suppressor quiets the shot). */
+function weaponEffectiveSound(w) {
+  let s = w.sound || "";
+  weaponAttachments(w).forEach(a => { if (a.sound) s = a.sound; });
+  return s;
+}
+
+/* Always-on numeric bonuses to attack & damage, from perks, attachments,
+   and quality. Situational bonuses (Marked, Suppressed, Aimed Shot) are left
+   as descriptive notes on the card, never auto-added.                        */
+function weaponFlatBonuses(w) {
+  let toHit = 0, dmg = 0;
+  const notes = [];
+  const groups = {};
+  collectActiveSources().forEach(s => {
+    if (!s.weapon || !s.weapon.match(w)) return;
+    if (!s.weapon.toHit && !s.weapon.dmg) return;
+    if (s.weapon.group) {
+      const prev = groups[s.weapon.group];
+      if (!prev || (s.weapon.toHit || 0) > (prev.toHit || 0)) groups[s.weapon.group] = s.weapon;
+    } else {
+      toHit += s.weapon.toHit || 0; dmg += s.weapon.dmg || 0;
+      notes.push(flatNote(s.weapon.name, s.weapon.toHit, s.weapon.dmg));
+    }
+  });
+  Object.values(groups).forEach(wp => {
+    toHit += wp.toHit || 0; dmg += wp.dmg || 0;
+    notes.push(flatNote(wp.name, wp.toHit, wp.dmg));
+  });
+  weaponAttachments(w).forEach(a => {
+    if (a.toHit) { toHit += a.toHit; notes.push(flatNote(a.name, a.toHit, 0)); }
+  });
+  const q = qualityToHit(w.quality);
+  if (q) { toHit += q; notes.push(flatNote(qualityLabel(w.quality), q, 0)); }
+  return { toHit, dmg, notes };
+}
+function flatNote(name, toHit, dmg) {
+  const parts = [];
+  if (toHit) parts.push(`${fmtMod(toHit)} hit`);
+  if (dmg) parts.push(`${fmtMod(dmg)} dmg`);
+  return `${name.replace(/\s*\(.*\)\s*$/, "")} ${parts.join(", ")}`;
+}
+
+/* Damage formula including always-on flat damage bonuses (single source of
+   truth for both the displayed value and the roll). */
+function weaponDamageFormula(w) {
+  const dmg = weaponFlatBonuses(w).dmg;
+  const base = w.damage || "";
+  return dmg ? `${base} + ${dmg}` : base;
+}
+
+/* Durability rules for weapons that have them (rulebook p.22). */
+function weaponDurability(w) {
+  if (w.category === "improvised") {
+    const tough = w.upgraded || isUnlocked("improvised", 1); // Upgraded, or a Scrap Brawler
+    return { die: 4, breakAt: tough ? 1 : 3,
+      label: tough ? "breaks only on a 1" : "breaks on 1–3" };
+  }
+  return null;
 }
 
 /* Ammo type -> backpack inventory id */
@@ -1397,14 +1534,16 @@ function renderWeapons() {
   }
   grid.innerHTML = character.weapons.map(w => {
     const bonuses = weaponBonuses(w);
+    const flat = weaponFlatBonuses(w);
     const hasAmmo = w.maxAmmo > 0 || (w.ammoType && w.ammoType.trim());
-    const effectiveSound = w.silenced ? "Quiet" : (w.sound || "");
+    const effectiveSound = weaponEffectiveSound(w);
     const soundCls = "sound " + effectiveSound.toLowerCase().replace(/\s+/g, "");
-    const canSilence = w.maxAmmo > 0 && w.category !== "rifle" && w.category !== "shotgun"; // handguns/bows only
-    const haveSilencer = (character.inventory.silencer || 0) > 0;
+    const atts = weaponAttachments(w);
+    const dur = weaponDurability(w);
+    const qLabel = qualityLabel(w.quality);
     return `<div class="weapon-card cat-${w.category}">
       <div class="weapon-head">
-        <div><div class="weapon-name">${esc(w.name || "Unnamed")}</div>
+        <div><div class="weapon-name">${esc(w.name || "Unnamed")}${qLabel ? ` <span class="quality-badge ${w.quality}">${qLabel}</span>` : ""}</div>
           <div class="weapon-type">${WEAPON_TYPE_LABEL[w.category] || w.category}</div></div>
         <div class="weapon-actions">
           <button class="icon-btn" data-edit-weapon="${w.id}" title="Edit">✎</button>
@@ -1417,19 +1556,11 @@ function renderWeapons() {
       </div>
 
       <div class="weapon-stats">
-        <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val rollable" data-roll-damage="${w.id}" title="Click to roll">${esc(w.damage || "—")}</div></div>
+        <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val rollable" data-roll-damage="${w.id}" title="Click to roll">${esc(weaponDamageFormula(w) || "—")}</div></div>
         <div class="wstat"><div class="ws-lbl">Range</div><div class="ws-val">${esc(w.range || "—")}</div></div>
         <div class="wstat ${soundCls}"><div class="ws-lbl">Sound</div><div class="ws-val">${esc(effectiveSound || "—")}</div></div>
         <div class="wstat"><div class="ws-lbl">Ammo Type</div><div class="ws-val">${esc(w.ammoType || "—")}</div></div>
       </div>
-
-      ${canSilence ? `
-        <div class="silencer-row">
-          <button class="silencer-btn ${w.silenced ? "on" : ""}" data-toggle-silencer="${w.id}" ${(!w.silenced && !haveSilencer) ? "disabled" : ""}>
-            ${icon("inv-silencer")} ${w.silenced ? "Remove Silencer" : "Attach Silencer"}
-          </button>
-          ${!w.silenced && !haveSilencer ? `<span class="silencer-hint">Need a Silencer in your backpack</span>` : ""}
-        </div>` : ""}
 
       <div class="ammo-track ${hasAmmo ? "" : "none"}">
         <div class="ammo-top">
@@ -1443,12 +1574,27 @@ function renderWeapons() {
         </div>
       </div>
 
-      ${w.upgrades && w.upgrades.length ? `
-        <div class="weapon-section-label">Upgrades</div>
-        <div class="upgrade-chips">${w.upgrades.map(u => `<span class="chip warn">${esc(u)}</span>`).join("")}</div>` : ""}
+      ${(dur || w.category === "bow") ? `
+        <div class="durability-row">
+          ${dur ? `<button class="dura-btn" data-durability="${w.id}">${icon("attack")} Durability Check <span class="dura-rule">(d4, ${dur.label})</span></button>` : ""}
+          ${w.category === "bow" ? `<button class="dura-btn" data-recover-arrow="${w.id}">↩ Recover Arrow <span class="dura-rule">(d4, 3–4 recovers)</span></button>` : ""}
+        </div>` : ""}
+
+      <div class="weapon-section-label attach-head">
+        <span>Attachments</span>
+        <button class="attach-add-btn" data-attach-open="${w.id}">＋ Attachment</button>
+      </div>
+      <div class="attach-chips">
+        ${atts.length ? atts.map((a, i) => `<span class="chip warn attach-chip" title="${esc(a.desc || "")}">${esc(a.name)}<span class="x" data-attach-remove="${w.id}:${i}">✕</span></span>`).join("")
+          : `<span class="attach-empty">None. Tap “＋ Attachment” to fit one.</span>`}
+      </div>
+
+      ${flat.notes.length ? `
+        <div class="weapon-section-label">Applied Bonuses</div>
+        <div class="flat-bonus-line">${flat.notes.map(n => `<span class="chip green">${esc(n)}</span>`).join("")}</div>` : ""}
 
       ${bonuses.length ? `
-        <div class="weapon-section-label">Active Bonuses</div>
+        <div class="weapon-section-label">Active Effects</div>
         <div class="bonus-list">${bonuses.map(b => `<div class="bonus-item"><div class="bi-name">${esc(b.name)}</div><div class="bi-desc">${esc(b.desc)}</div></div>`).join("")}</div>` : ""}
 
       ${w.notes ? `<div class="weapon-notes">${esc(w.notes)}</div>` : ""}
@@ -1559,7 +1705,7 @@ function renderBackpack() {
         const inThis = Math.min(max, remaining);
         remaining -= inThis;
         cells.push(`<div class="gen-slot filled" data-item-info="${esc(it.id)}">
-          <span class="gs-icon">${icon("invcustom")}</span>
+          <span class="gs-icon">${icon("inv-medkit")}</span>
           <div class="gs-name">${esc(it.name)}</div>
           <div class="gs-qty">${inThis}/${max}</div>
         </div>`);
@@ -1596,7 +1742,7 @@ function renderBackpack() {
   if (character.customItems.length) {
     const customCards = character.customItems.map(it => `
       <div class="inv-item has-qty" data-item-info="${esc(it.id)}">
-        <span class="inv-icon">${icon("invcustom")}</span>
+        <span class="inv-icon">${icon("inv-custom")}</span>
         <div class="inv-name">${esc(it.name)}</div>
         <div class="inv-qty">${it.qty}</div>
         <div class="inv-controls">
@@ -1627,7 +1773,7 @@ function stackMax(it, stack3) {
 }
 
 function groupIcon(name) {
-  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : name.includes("Custom") ? "invcustom" : "inv-medkit");
+  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : name.includes("Custom") ? "inv-custom" : "inv-medkit");
 }
 
 /* ---- Crafting ---- */
@@ -2033,9 +2179,25 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
   const dmgBtn = e.target.closest("[data-roll-damage]");
   if (dmgBtn) {
     const w = character.weapons.find(x => x.id === dmgBtn.dataset.rollDamage);
-    if (w) rollDamage(w.damage, `${w.name || "Weapon"} — Damage`);
+    if (w) rollDamage(weaponDamageFormula(w), `${w.name || "Weapon"} — Damage`);
     return;
   }
+  const attOpen = e.target.closest("[data-attach-open]");
+  if (attOpen) { openAttachmentModal(attOpen.dataset.attachOpen); return; }
+  const attRm = e.target.closest("[data-attach-remove]");
+  if (attRm) {
+    const [id, idxStr] = attRm.dataset.attachRemove.split(":");
+    const w = character.weapons.find(x => x.id === id);
+    if (w && Array.isArray(w.attachments)) {
+      w.attachments.splice(Number(idxStr), 1);
+      save(); renderAll();
+    }
+    return;
+  }
+  const duraBtn = e.target.closest("[data-durability]");
+  if (duraBtn) { rollDurabilityCheck(duraBtn.dataset.durability); return; }
+  const recBtn = e.target.closest("[data-recover-arrow]");
+  if (recBtn) { rollRecoverArrow(recBtn.dataset.recoverArrow); return; }
   const ammoBtn = e.target.closest("[data-ammo]");
   if (ammoBtn) {
     const [id, op] = ammoBtn.dataset.ammo.split(":");
@@ -2063,22 +2225,18 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
     } else if (op === "-1") {
       if ((w.currentAmmo || 0) > 0) {
         w.currentAmmo -= 1;
+        // Makeshift Suppressor: each shot, roll d6 — on a 1 it's spent.
+        const supIdx = (w.attachments || []).findIndex(a => a.key === "suppressor");
+        if (supIdx >= 0) {
+          const d6 = rollDie(6);
+          if (d6 === 1) {
+            w.attachments.splice(supIdx, 1);
+            toast(`Suppressor spent (rolled 1). ${w.name || "Gun"} is Very Loud now.`);
+          } else {
+            toast(`Shot fired Quiet (suppressor d6: ${d6}).`);
+          }
+        }
       }
-    }
-    save(); renderAll();
-    return;
-  }
-  const silBtn = e.target.closest("[data-toggle-silencer]");
-  if (silBtn) {
-    const w = character.weapons.find(x => x.id === silBtn.dataset.toggleSilencer);
-    if (!w) return;
-    if (!w.silenced) {
-      if ((character.inventory.silencer || 0) <= 0) return;
-      character.inventory.silencer -= 1;
-      w.silenced = true;
-    } else {
-      character.inventory.silencer = (character.inventory.silencer || 0) + 1;
-      w.silenced = false;
     }
     save(); renderAll();
     return;
@@ -2291,6 +2449,124 @@ function openUpgradeBackpackModal() {
   attach();
 }
 
+/* Attachment modal: fit/remove base attachments + add custom ones. */
+function openAttachmentModal(weaponId) {
+  const w = character.weapons.find(x => x.id === weaponId);
+  if (!w) return;
+  if (!Array.isArray(w.attachments)) w.attachments = [];
+
+  const renderBody = () => {
+    const haveKeys = new Set(w.attachments.filter(a => a.key).map(a => a.key));
+    const optRow = (a) => {
+      const fits = attachmentFits(a, w);
+      const on = haveKeys.has(a.key);
+      const tags = [a.toHit ? `<span class="att-tag">+${a.toHit} hit</span>` : "", a.sound ? `<span class="att-tag">${esc(a.sound)}</span>` : ""].join("");
+      return `<div class="att-opt ${on ? "on" : ""} ${fits ? "" : "disabled"}">
+        <div class="att-info">
+          <div class="att-name">${esc(a.name)} ${tags}</div>
+          <div class="att-desc">${esc(a.desc)}</div>
+        </div>
+        ${fits
+          ? `<button class="att-toggle ${on ? "on" : ""}" data-att-toggle="${a.key}">${on ? "Remove" : "Fit"}</button>`
+          : `<span class="att-na" title="Doesn't fit this weapon type">N/A</span>`}
+      </div>`;
+    };
+    return `
+      <div class="modal-head"><h3>Attachments — ${esc(w.name || "Weapon")}</h3><button class="modal-close" data-modal-close>✕</button></div>
+      <div class="modal-body">
+        <div class="att-current-label">Fitted (one of each kind)</div>
+        <div class="attach-chips">${w.attachments.length
+          ? w.attachments.map((a, i) => `<span class="chip warn">${esc(a.name)}<span class="x" data-att-del="${i}">✕</span></span>`).join("")
+          : `<span class="attach-empty">None yet.</span>`}</div>
+
+        <div class="att-list-label">Base attachments</div>
+        <div class="att-list">${GAME_DATA.attachments.map(optRow).join("")}</div>
+
+        <div class="att-list-label">Custom attachment</div>
+        <div class="att-custom">
+          <input id="att-custom-name" type="text" placeholder="Name (e.g. Laser Sight)" />
+          <input id="att-custom-desc" type="text" placeholder="What it does (optional)" />
+          <label class="att-custom-hit"><input id="att-custom-hit" type="checkbox" /> +1 to hit</label>
+          <button class="btn accent" id="att-custom-add">Add</button>
+        </div>
+      </div>
+      <div class="modal-foot"><button class="btn accent" data-modal-close>Done</button></div>`;
+  };
+
+  const refresh = () => { showModal(renderBody()); wire(); };
+  function wire() {
+    const box = document.getElementById("modal-box");
+    if (!box) return;
+    box.querySelectorAll("[data-att-toggle]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.attToggle;
+        const idx = w.attachments.findIndex(a => a.key === key);
+        if (idx >= 0) { w.attachments.splice(idx, 1); }
+        else {
+          const base = GAME_DATA.attachmentByKey[key];
+          if (base) w.attachments.push({ key, name: base.name });
+        }
+        save(); renderAll(); refresh();
+      });
+    });
+    box.querySelectorAll("[data-att-del]").forEach(x => {
+      x.addEventListener("click", () => { w.attachments.splice(Number(x.dataset.attDel), 1); save(); renderAll(); refresh(); });
+    });
+    const addBtn = document.getElementById("att-custom-add");
+    if (addBtn) addBtn.addEventListener("click", () => {
+      const name = (document.getElementById("att-custom-name").value || "").trim();
+      if (!name) { toast("Name your attachment first."); return; }
+      const desc = (document.getElementById("att-custom-desc").value || "").trim();
+      const hit = document.getElementById("att-custom-hit").checked;
+      w.attachments.push(Object.assign({ name, desc, custom: true }, hit ? { toHit: 1 } : {}));
+      save(); renderAll(); refresh();
+    });
+  }
+  refresh();
+}
+
+/* Durability Check (improvised weapons): roll d4 vs the break threshold. */
+function rollDurabilityCheck(weaponId) {
+  const w = character.weapons.find(x => x.id === weaponId);
+  if (!w) return;
+  const dur = weaponDurability(w);
+  if (!dur) { toast("This weapon has no durability check."); return; }
+  const roll = rollDie(dur.die);
+  const wouldBreak = roll <= dur.breakAt;
+  let msg, nat = null;
+  if (wouldBreak) {
+    const left = qualityResists(w.quality) - (w.breakResistUsed || 0);
+    if (left > 0) {
+      w.breakResistUsed = (w.breakResistUsed || 0) + 1;
+      msg = `d4 [${roll}] — would break, but ${qualityLabel(w.quality)} holds (${left - 1} resist${left - 1 === 1 ? "" : "s"} left).`;
+    } else {
+      msg = `d4 [${roll}] — it BREAKS.`;
+      nat = "nat1";
+    }
+  } else {
+    msg = `d4 [${roll}] — it holds.`;
+  }
+  addRollLog(`${w.name || "Weapon"} — Durability`, msg, roll, nat);
+  toast(msg);
+  save(); renderAll();
+}
+
+/* Recover Arrow (bows): bonus action, d4 — 3–4 recovers the arrow. */
+function rollRecoverArrow(weaponId) {
+  const w = character.weapons.find(x => x.id === weaponId);
+  if (!w) return;
+  const roll = rollDie(4);
+  if (roll >= 3) {
+    character.inventory.arrows = (character.inventory.arrows || 0) + 1;
+    addRollLog(`${w.name || "Bow"} — Recover Arrow`, `d4 [${roll}] — recovered (+1 Arrow).`, roll);
+    toast(`Arrow recovered (d4: ${roll}). +1 Arrow in bag.`);
+  } else {
+    addRollLog(`${w.name || "Bow"} — Recover Arrow`, `d4 [${roll}] — the arrow broke.`, roll);
+    toast(`Arrow broke (d4: ${roll}).`);
+  }
+  save(); renderAll();
+}
+
 /* Custom item modal: simple name + description form */
 function openCustomItemModal(editId) {
   const editing = editId ? character.customItems.find(i => i.id === editId) : null;
@@ -2489,8 +2765,24 @@ function buildWeaponTemplateSelect() {
     document.getElementById("wf-ammotype").value = t.ammoType || "";
     document.getElementById("wf-maxammo").value = t.maxAmmo || 0;
     document.getElementById("wf-sound").value = t.sound || "Medium";
-    document.getElementById("wf-upgrades").value = (t.upgrades || []).join(", ");
+    document.getElementById("wf-notes").value = t.note || "";
   });
+}
+
+/* Show a warning under the Quality select if the perk isn't unlocked. */
+function updateQualityHint() {
+  const sel = document.getElementById("wf-quality");
+  const hint = document.getElementById("wf-quality-hint");
+  if (!sel || !hint) return;
+  const q = sel.value;
+  if (q && !canMakeQuality(q)) {
+    const need = q === "masterwork" ? "Master Craftsman III (Masterwork Tools)" : "Master Craftsman II (Hardened Goods)";
+    hint.textContent = `Note: normally requires ${need}.`;
+    hint.classList.add("warn");
+  } else {
+    hint.textContent = "";
+    hint.classList.remove("warn");
+  }
 }
 
 function openWeaponModal(id) {
@@ -2506,8 +2798,9 @@ function openWeaponModal(id) {
   document.getElementById("wf-ammotype").value = w ? w.ammoType : "";
   document.getElementById("wf-maxammo").value = w ? w.maxAmmo : 0;
   document.getElementById("wf-sound").value = w ? w.sound : "Very Loud";
-  document.getElementById("wf-upgrades").value = w ? (w.upgrades || []).join(", ") : "";
+  document.getElementById("wf-quality").value = w ? (w.quality || "") : "";
   document.getElementById("wf-notes").value = w ? w.notes : "";
+  updateQualityHint();
   document.getElementById("weapon-modal").hidden = false;
 }
 function closeWeaponModal() { document.getElementById("weapon-modal").hidden = true; editingWeaponId = null; }
@@ -2521,7 +2814,7 @@ function saveWeaponFromModal() {
     ammoType: document.getElementById("wf-ammotype").value.trim(),
     maxAmmo: Math.max(0, parseInt(document.getElementById("wf-maxammo").value, 10) || 0),
     sound: document.getElementById("wf-sound").value,
-    upgrades: document.getElementById("wf-upgrades").value.split(",").map(s => s.trim()).filter(Boolean),
+    quality: document.getElementById("wf-quality").value,
     notes: document.getElementById("wf-notes").value.trim(),
   };
   if (editingWeaponId) {
@@ -2529,11 +2822,12 @@ function saveWeaponFromModal() {
     Object.assign(w, data);
     if (w.currentAmmo > w.maxAmmo) w.currentAmmo = w.maxAmmo;
   } else {
-    character.weapons.push(Object.assign({ id: uid(), currentAmmo: data.maxAmmo }, data));
+    character.weapons.push(Object.assign({ id: uid(), currentAmmo: data.maxAmmo, attachments: [], breakResistUsed: 0 }, data));
   }
   save(); closeWeaponModal(); renderAll();
 }
 
+document.getElementById("wf-quality").addEventListener("change", updateQualityHint);
 document.getElementById("add-weapon-btn").addEventListener("click", () => openWeaponModal(null));
 document.getElementById("weapon-modal-close").addEventListener("click", closeWeaponModal);
 document.getElementById("weapon-cancel").addEventListener("click", closeWeaponModal);
