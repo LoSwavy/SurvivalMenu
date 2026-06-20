@@ -445,8 +445,6 @@ function tmplWeapon(name, category, overrides = {}) {
     sound: base.sound || "Medium",
     upgraded: !!base.upgraded,        // upgraded improvised weapon (breaks only on 1)
     attachments: [],                  // [{key?, name, desc, toHit, sound, custom}]
-    quality: "",                      // "" | "hardened" | "masterwork"
-    breakResistUsed: 0,               // durability charges spent off Hardened/Masterwork
     notes: base.note || "",
   };
   return Object.assign(w, overrides);
@@ -516,8 +514,8 @@ function loadCharacter() {
       // Migrate weapons to the structured attachment + quality model.
       if (Array.isArray(c.weapons)) c.weapons.forEach(w => {
         if (!Array.isArray(w.attachments)) w.attachments = [];
-        if (typeof w.quality !== "string") w.quality = "";
-        if (typeof w.breakResistUsed !== "number") w.breakResistUsed = 0;
+        delete w.quality;
+        delete w.breakResistUsed;
         if (typeof w.upgraded !== "boolean") w.upgraded = /upgraded/i.test(w.name || "") || /1d10/.test(w.damage || "") && w.category === "improvised";
         // Legacy freeform upgrades[] → custom attachments.
         if (Array.isArray(w.upgrades) && w.upgrades.length) {
@@ -696,13 +694,32 @@ function buildDashboard(sources, d) {
   // ---- Inventory-driven actions ----
   const inv = character.inventory;
   const healCat = d.flags.healAsBonus ? CAT.BONUS : CAT.ACTION;
-  // Master Craftsman improves crafted bandages: Refined Skill +1, Hardened +2, Masterwork +3.
-  const craftedHealBonus = isUnlocked("mastercraft", 3) ? 3 : isUnlocked("mastercraft", 2) ? 2 : isUnlocked("mastercraft", 1) ? 1 : 0;
-  const craftNote = craftedHealBonus ? ` Crafted: +${craftedHealBonus} healing (Master Craftsman).` : "";
-  if ((inv.bandage || 0) > 0) push(healCat, "Use Bandage", `Heal 1d4 + CON.${craftNote} (${inv.bandage} carried)`, "Backpack");
-  if ((inv.medkit || 0) > 0) push(healCat, "Use Medkit", `Heal 2d6 + CON per use. (${inv.medkit} carried)`, "Backpack");
-  if ((inv.molotov || 0) > 0) push(CAT.ACTION, "Throw Molotov", `1d10 fire; DC 15 DEX save vs catching fire. (${inv.molotov} carried)`, "Backpack");
-  if ((inv.shiv || 0) > 0) push(CAT.ACTION, "Use Shiv", `Quiet. Instant kill vs an Unaware target (max HP ≤ 30); targets over 30 max HP just take 1d8. Breaks after use unless Hardened/Masterwork. (${inv.shiv} carried)`, "Backpack");
+  const bandageTotal = totalCraftedQty("bandage");
+  const shivTotal = totalCraftedQty("shiv");
+  const molotovTotal = (inv.molotov || 0);
+  const medkitTotal = (inv.medkit || 0);
+  if (bandageTotal > 0) {
+    const parts = QUALITY_TIERS.map(q => {
+      const k = qualityInvKey("bandage", q);
+      const n = inv[k] || 0;
+      if (!n) return null;
+      const bonus = qualityToHit(q);
+      return `${n} ${q ? qualityLabel(q) : "Standard"} (1d4+CON${bonus ? `+${bonus}` : ""})`;
+    }).filter(Boolean).join(", ");
+    push(healCat, "Use Bandage", `Heal with a bandage. ${parts}.`, "Backpack");
+  }
+  if (medkitTotal > 0) push(healCat, "Use Medkit", `Heal 2d6 + CON per use. (${medkitTotal} carried)`, "Backpack");
+  if (molotovTotal > 0) push(CAT.ACTION, "Throw Molotov", `1d10 fire; DC 15 DEX save vs catching fire. (${molotovTotal} carried)`, "Backpack");
+  if (shivTotal > 0) {
+    const parts = QUALITY_TIERS.map(q => {
+      const k = qualityInvKey("shiv", q);
+      const n = inv[k] || 0;
+      if (!n) return null;
+      const resists = qualityResists(q);
+      return `${n} ${q ? qualityLabel(q) : "Standard"}${resists ? ` (resists breaking ${resists}×)` : ""}`;
+    }).filter(Boolean).join(", ");
+    push(CAT.ACTION, "Use Shiv", `Quiet. Instant kill vs Unaware (max HP ≤ 30); tougher targets take 1d8. ${parts}.`, "Backpack");
+  }
 
   // ---- All dash entries from sources ----
   sources.forEach(s => {
@@ -753,16 +770,28 @@ function weaponToHitMod(w) {
 /* Is a skill-tree tier unlocked? (tier is 1-based) */
 function isUnlocked(treeId, tier) { return (character.unlocked[treeId] || 0) >= tier; }
 
-/* Quality tier helpers (Hardened / Masterwork — rulebook p.23-24) */
+/* Quality tier helpers for crafted items (Hardened / Masterwork — rulebook p.23-24) */
 function qualityToHit(q) { return q === "masterwork" ? 3 : q === "hardened" ? 2 : 0; }
 function qualityLabel(q) { return q === "masterwork" ? "Masterwork" : q === "hardened" ? "Hardened" : ""; }
 function qualityResists(q) { return q === "masterwork" ? 2 : q === "hardened" ? 1 : 0; }
-/* Do you have the perk to make this quality? II = Hardened, III = Masterwork. */
 function canMakeQuality(q) {
   if (q === "hardened") return isUnlocked("mastercraft", 2);
   if (q === "masterwork") return isUnlocked("mastercraft", 3);
   return true;
 }
+const QUALITY_TIERS = ["", "hardened", "masterwork"];
+const QUALITY_SUFFIX = { "": "", hardened: "_hardened", masterwork: "_masterwork" };
+function qualityInvKey(baseId, q) { return baseId + (QUALITY_SUFFIX[q] || ""); }
+function parseQualityKey(key) {
+  if (key.endsWith("_masterwork")) return { baseId: key.slice(0, -11), quality: "masterwork" };
+  if (key.endsWith("_hardened")) return { baseId: key.slice(0, -9), quality: "hardened" };
+  return { baseId: key, quality: "" };
+}
+function totalCraftedQty(baseId) {
+  return QUALITY_TIERS.reduce((s, q) => s + (character.inventory[qualityInvKey(baseId, q)] || 0), 0);
+}
+function isCraftable(item) { return !!item.craft || item.id === "medkit"; }
+function canImproveQuality(item) { return !!item.craft && item.id !== "molotov"; }
 
 /* Resolve a weapon's attachment list into full objects (base catalog + custom). */
 function weaponAttachments(w) {
@@ -782,9 +811,9 @@ function weaponEffectiveSound(w) {
   return s;
 }
 
-/* Always-on numeric bonuses to attack & damage, from perks, attachments,
-   and quality. Situational bonuses (Marked, Suppressed, Aimed Shot) are left
-   as descriptive notes on the card, never auto-added.                        */
+/* Always-on numeric bonuses to attack & damage, from perks and attachments.
+   Situational bonuses (Marked, Suppressed, Aimed Shot) are left as
+   descriptive notes on the card, never auto-added.                           */
 function weaponFlatBonuses(w) {
   let toHit = 0, dmg = 0;
   const notes = [];
@@ -807,8 +836,6 @@ function weaponFlatBonuses(w) {
   weaponAttachments(w).forEach(a => {
     if (a.toHit) { toHit += a.toHit; notes.push(flatNote(a.name, a.toHit, 0)); }
   });
-  const q = qualityToHit(w.quality);
-  if (q) { toHit += q; notes.push(flatNote(qualityLabel(w.quality), q, 0)); }
   return { toHit, dmg, notes };
 }
 function flatNote(name, toHit, dmg) {
@@ -1540,10 +1567,9 @@ function renderWeapons() {
     const soundCls = "sound " + effectiveSound.toLowerCase().replace(/\s+/g, "");
     const atts = weaponAttachments(w);
     const dur = weaponDurability(w);
-    const qLabel = qualityLabel(w.quality);
     return `<div class="weapon-card cat-${w.category}">
       <div class="weapon-head">
-        <div><div class="weapon-name">${esc(w.name || "Unnamed")}${qLabel ? ` <span class="quality-badge ${w.quality}">${qLabel}</span>` : ""}</div>
+        <div><div class="weapon-name">${esc(w.name || "Unnamed")}</div>
           <div class="weapon-type">${WEAPON_TYPE_LABEL[w.category] || w.category}</div></div>
         <div class="weapon-actions">
           <button class="icon-btn" data-edit-weapon="${w.id}" title="Edit">✎</button>
@@ -1654,13 +1680,27 @@ function backpackCap() {
   return Math.max(GENERAL_SLOTS_DEFAULT, Math.min(MAX_BACKPACK_SLOTS, character.backpackSlots));
 }
 
+/* Expand a game-data item into its quality variants (for crafted items) or just itself. */
+function inventoryRows(it, stack3) {
+  if (!isCraftable(it) || !canImproveQuality(it)) {
+    const qty = character.inventory[it.id] || 0;
+    return qty > 0 ? [{ item: it, key: it.id, qty, quality: "", max: stackMax(it, stack3) }] : [];
+  }
+  const rows = [];
+  QUALITY_TIERS.forEach(q => {
+    const key = qualityInvKey(it.id, q);
+    const qty = character.inventory[key] || 0;
+    if (qty > 0) rows.push({ item: it, key, qty, quality: q, max: stackMax(it, stack3) });
+  });
+  return rows;
+}
+
 /* Count how many backpack slots are currently occupied (each stack = 1 slot). */
 function usedBackpackSlots() {
   const stack3 = !!(D && D.flags && D.flags.craftedStack3);
   let used = 0;
   GAME_DATA.inventory.flatMap(g => g.items).forEach(it => {
-    const qty = character.inventory[it.id] || 0;
-    if (qty > 0) used += Math.ceil(qty / stackMax(it, stack3));
+    inventoryRows(it, stack3).forEach(r => { used += Math.ceil(r.qty / r.max); });
   });
   if (Array.isArray(character.customItems)) {
     character.customItems.forEach(it => {
@@ -1681,19 +1721,18 @@ function renderBackpack() {
 
   const stack3 = !!(D && D.flags && D.flags.craftedStack3);
   const cap = backpackCap();
-  const filledItems = GAME_DATA.inventory.flatMap(g => g.items).filter(it => (character.inventory[it.id] || 0) > 0);
-  // Build one slot per stack (items overflow into additional slots when over their stack max).
+  const allRows = GAME_DATA.inventory.flatMap(g => g.items).flatMap(it => inventoryRows(it, stack3));
   const cells = [];
-  filledItems.forEach(it => {
-    let remaining = character.inventory[it.id] || 0;
-    const max = stackMax(it, stack3);
+  allRows.forEach(r => {
+    let remaining = r.qty;
+    const qBadge = r.quality ? ` <span class="quality-badge ${r.quality}">${qualityLabel(r.quality)}</span>` : "";
     while (remaining > 0) {
-      const inThis = Math.min(max, remaining);
+      const inThis = Math.min(r.max, remaining);
       remaining -= inThis;
-      cells.push(`<div class="gen-slot filled" data-item-info="${it.id}">
-        <span class="gs-icon">${icon(it.icon)}</span>
-        <div class="gs-name">${esc(it.name)}</div>
-        <div class="gs-qty">${inThis}/${max}</div>
+      cells.push(`<div class="gen-slot filled" data-item-info="${r.item.id}">
+        <span class="gs-icon">${icon(r.item.icon)}</span>
+        <div class="gs-name">${esc(r.item.name)}${qBadge}</div>
+        <div class="gs-qty">${inThis}/${r.max}</div>
       </div>`);
     }
   });
@@ -1718,22 +1757,42 @@ function renderBackpack() {
 
   const root = document.getElementById("backpack");
   let html = GAME_DATA.inventory.map(group => {
-    const items = group.items.map(it => {
-      const qty = character.inventory[it.id] || 0;
-      return `<div class="inv-item ${qty > 0 ? "has-qty" : "zero"}" data-item-info="${it.id}">
-        <span class="inv-icon">${icon(it.icon)}</span>
-        <div class="inv-name">${esc(it.name)}</div>
-        <div class="inv-qty">${qty}</div>
-        <div class="inv-controls">
-          <button class="inv-btn minus" data-inv="${it.id}:-1">−</button>
-          <button class="inv-btn plus" data-inv="${it.id}:1">＋</button>
-        </div>
-        ${it.recipe ? `<div class="inv-recipe">${esc(it.recipe)}</div>` : ""}
-      </div>`;
-    }).join("");
+    const cards = [];
+    group.items.forEach(it => {
+      if (isCraftable(it) && canImproveQuality(it)) {
+        QUALITY_TIERS.forEach(q => {
+          const key = qualityInvKey(it.id, q);
+          const qty = character.inventory[key] || 0;
+          const qBadge = q ? ` <span class="quality-badge ${q}">${qualityLabel(q)}</span>` : "";
+          const label = q ? `${it.name} (${qualityLabel(q)})` : it.name;
+          cards.push(`<div class="inv-item ${qty > 0 ? "has-qty" : "zero"}" data-item-info="${it.id}">
+            <span class="inv-icon">${icon(it.icon)}</span>
+            <div class="inv-name">${esc(it.name)}${qBadge}</div>
+            <div class="inv-qty">${qty}</div>
+            <div class="inv-controls">
+              <button class="inv-btn minus" data-inv="${key}:-1">−</button>
+              <button class="inv-btn plus" data-inv="${key}:1">＋</button>
+            </div>
+            ${!q && it.recipe ? `<div class="inv-recipe">${esc(it.recipe)}</div>` : ""}
+          </div>`);
+        });
+      } else {
+        const qty = character.inventory[it.id] || 0;
+        cards.push(`<div class="inv-item ${qty > 0 ? "has-qty" : "zero"}" data-item-info="${it.id}">
+          <span class="inv-icon">${icon(it.icon)}</span>
+          <div class="inv-name">${esc(it.name)}</div>
+          <div class="inv-qty">${qty}</div>
+          <div class="inv-controls">
+            <button class="inv-btn minus" data-inv="${it.id}:-1">−</button>
+            <button class="inv-btn plus" data-inv="${it.id}:1">＋</button>
+          </div>
+          ${it.recipe ? `<div class="inv-recipe">${esc(it.recipe)}</div>` : ""}
+        </div>`);
+      }
+    });
     return `<div class="inv-cat">
       <div class="inv-cat-head"><span class="ic-icon">${groupIcon(group.group)}</span><h3>${esc(group.group)}</h3></div>
-      <div class="inv-grid">${items}</div>
+      <div class="inv-grid">${cards.join("")}</div>
     </div>`;
   }).join("");
 
@@ -1783,8 +1842,13 @@ function renderCrafting() {
   root.innerHTML = craftables.map(it => {
     const have = (id, n) => (character.inventory[id] || 0) >= n;
     const canCraft = Object.entries(it.craft).every(([id, n]) => have(id, n));
+    let qNote = "";
+    if (canImproveQuality(it)) {
+      if (canMakeQuality("masterwork")) qNote = ' <span class="quality-badge masterwork">Masterwork</span>';
+      else if (canMakeQuality("hardened")) qNote = ' <span class="quality-badge hardened">Hardened</span>';
+    }
     return `<div class="craft-card">
-      <div class="cc-name">${icon(it.icon)} ${esc(it.name)}</div>
+      <div class="cc-name">${icon(it.icon)} ${esc(it.name)}${qNote}</div>
       <div class="cc-recipe">${esc(it.recipe)}</div>
       <button data-craft="${it.id}" ${canCraft ? "" : "disabled"}>Craft</button>
     </div>`;
@@ -2320,16 +2384,23 @@ document.getElementById("crafting").addEventListener("click", e => {
   const item = GAME_DATA.invById[id];
   const have = Object.entries(item.craft).every(([mid, n]) => (character.inventory[mid] || 0) >= n);
   if (!have) return;
-  // Crafting a brand-new item type (currently 0 of it) needs a free backpack slot.
-  const isNewStack = (character.inventory[id] || 0) === 0;
+  // Determine quality tier based on Master Craftsman perks (molotovs can't be improved).
+  let quality = "";
+  if (canImproveQuality(item)) {
+    if (canMakeQuality("masterwork")) quality = "masterwork";
+    else if (canMakeQuality("hardened")) quality = "hardened";
+  }
+  const invKey = qualityInvKey(id, quality);
+  const isNewStack = (character.inventory[invKey] || 0) === 0;
   if (isNewStack && !hasFreeBackpackSlot()) {
     toast("Backpack full — increase capacity or drop items.");
     return;
   }
   Object.entries(item.craft).forEach(([mid, n]) => { character.inventory[mid] -= n; });
-  character.inventory[id] = (character.inventory[id] || 0) + 1;
+  character.inventory[invKey] = (character.inventory[invKey] || 0) + 1;
+  const qLabel = qualityLabel(quality);
   save(); renderAll();
-  toast(`Crafted ${item.name}`);
+  toast(`Crafted ${qLabel ? qLabel + " " : ""}${item.name}`);
 });
 
 /* Custom items: add / qty / delete */
@@ -2535,14 +2606,8 @@ function rollDurabilityCheck(weaponId) {
   const wouldBreak = roll <= dur.breakAt;
   let msg, nat = null;
   if (wouldBreak) {
-    const left = qualityResists(w.quality) - (w.breakResistUsed || 0);
-    if (left > 0) {
-      w.breakResistUsed = (w.breakResistUsed || 0) + 1;
-      msg = `d4 [${roll}] — would break, but ${qualityLabel(w.quality)} holds (${left - 1} resist${left - 1 === 1 ? "" : "s"} left).`;
-    } else {
-      msg = `d4 [${roll}] — it BREAKS.`;
-      nat = "nat1";
-    }
+    msg = `d4 [${roll}] — it BREAKS.`;
+    nat = "nat1";
   } else {
     msg = `d4 [${roll}] — it holds.`;
   }
@@ -2769,22 +2834,6 @@ function buildWeaponTemplateSelect() {
   });
 }
 
-/* Show a warning under the Quality select if the perk isn't unlocked. */
-function updateQualityHint() {
-  const sel = document.getElementById("wf-quality");
-  const hint = document.getElementById("wf-quality-hint");
-  if (!sel || !hint) return;
-  const q = sel.value;
-  if (q && !canMakeQuality(q)) {
-    const need = q === "masterwork" ? "Master Craftsman III (Masterwork Tools)" : "Master Craftsman II (Hardened Goods)";
-    hint.textContent = `Note: normally requires ${need}.`;
-    hint.classList.add("warn");
-  } else {
-    hint.textContent = "";
-    hint.classList.remove("warn");
-  }
-}
-
 function openWeaponModal(id) {
   buildWeaponTemplateSelect();
   editingWeaponId = id || null;
@@ -2798,9 +2847,7 @@ function openWeaponModal(id) {
   document.getElementById("wf-ammotype").value = w ? w.ammoType : "";
   document.getElementById("wf-maxammo").value = w ? w.maxAmmo : 0;
   document.getElementById("wf-sound").value = w ? w.sound : "Very Loud";
-  document.getElementById("wf-quality").value = w ? (w.quality || "") : "";
   document.getElementById("wf-notes").value = w ? w.notes : "";
-  updateQualityHint();
   document.getElementById("weapon-modal").hidden = false;
 }
 function closeWeaponModal() { document.getElementById("weapon-modal").hidden = true; editingWeaponId = null; }
@@ -2814,7 +2861,6 @@ function saveWeaponFromModal() {
     ammoType: document.getElementById("wf-ammotype").value.trim(),
     maxAmmo: Math.max(0, parseInt(document.getElementById("wf-maxammo").value, 10) || 0),
     sound: document.getElementById("wf-sound").value,
-    quality: document.getElementById("wf-quality").value,
     notes: document.getElementById("wf-notes").value.trim(),
   };
   if (editingWeaponId) {
@@ -2822,12 +2868,11 @@ function saveWeaponFromModal() {
     Object.assign(w, data);
     if (w.currentAmmo > w.maxAmmo) w.currentAmmo = w.maxAmmo;
   } else {
-    character.weapons.push(Object.assign({ id: uid(), currentAmmo: data.maxAmmo, attachments: [], breakResistUsed: 0 }, data));
+    character.weapons.push(Object.assign({ id: uid(), currentAmmo: data.maxAmmo, attachments: [] }, data));
   }
   save(); closeWeaponModal(); renderAll();
 }
 
-document.getElementById("wf-quality").addEventListener("change", updateQualityHint);
 document.getElementById("add-weapon-btn").addEventListener("click", () => openWeaponModal(null));
 document.getElementById("weapon-modal-close").addEventListener("click", closeWeaponModal);
 document.getElementById("weapon-cancel").addEventListener("click", closeWeaponModal);
