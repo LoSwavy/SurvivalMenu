@@ -920,6 +920,11 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
 }
 .craft-card .cc-name { font-weight: 700; font-size: 0.82rem; color: var(--text); display: flex; align-items: center; justify-content: center; gap: 6px; }
 .craft-card .cc-recipe { font-size: 0.66rem; color: var(--text-faint); margin: 4px 0 8px; }
+.craft-card .craft-quality {
+  width: 100%; min-height: var(--tap); margin-bottom: 6px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--bg-2); color: var(--text);
+  font-size: 0.72rem; padding: 0 6px;
+}
 .craft-card button {
   width: 100%; min-height: var(--tap); border-radius: 6px; border: 1px solid var(--green-deep);
   background: var(--green-glow); color: var(--green); font-weight: 800; cursor: pointer;
