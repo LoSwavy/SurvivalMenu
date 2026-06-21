@@ -1004,7 +1004,11 @@ body[data-active-tab]:not([data-active-tab="character"]) .ref-panel {
   flex: 1.6; color: #ffd9d2; border-color: #7d2a22; letter-spacing: 0.5px;
   background: linear-gradient(180deg, #8c2f25, #6f231b);
 }
-.fire-btn.shoot .icon { filter: brightness(0) invert(1); width: 1.05rem; height: 1.05rem; }
+.fire-btn.shoot .icon, .fire-btn.strike .icon { filter: brightness(0) invert(1); width: 1.05rem; height: 1.05rem; }
+.fire-btn.strike {
+  flex: 1; color: #ffeacc; border-color: #7a5c36; letter-spacing: 0.5px;
+  background: linear-gradient(180deg, #8a6a40, #6b4f2a);
+}
 .fire-btn.reload { flex: 1; font-size: 0.76rem; color: var(--text-dim); letter-spacing: 0.5px; background: var(--bg-2); }
 
 /* Advantage / disadvantage context menu */
