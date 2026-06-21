@@ -1609,6 +1609,7 @@ function renderWeapons() {
     const bonuses = weaponBonuses(w);
     const flat = weaponFlatBonuses(w);
     const hasAmmo = w.maxAmmo > 0 || (w.ammoType && w.ammoType.trim());
+    const isMelee = ["blunt", "melee", "improvised"].includes(w.category);
     const effectiveSound = weaponEffectiveSound(w);
     const soundCls = "sound " + effectiveSound.toLowerCase().replace(/\s+/g, "");
     const atts = weaponAttachments(w);
@@ -1646,7 +1647,7 @@ function renderWeapons() {
       </div>` : ""}
 
       <div class="fire-row">
-        <button class="fire-btn shoot" data-shoot="${w.id}" title="Roll attack (right-click / long-press for advantage)">${icon("attack")} SHOOT ${fmtMod(weaponToHitMod(w))}</button>
+        <button class="fire-btn ${isMelee ? "strike" : "shoot"}" data-shoot="${w.id}" title="Roll attack (right-click / long-press for advantage)">${icon("attack")} ${isMelee ? "STRIKE" : "SHOOT"} ${fmtMod(weaponToHitMod(w))}</button>
         ${hasAmmo && w.category !== "bow" ? `<button class="fire-btn reload" data-ammo="${w.id}:reload">RELOAD</button>` : ""}
       </div>
 
@@ -2555,10 +2556,36 @@ document.getElementById("crafting").addEventListener("click", e => {
     return;
   }
   Object.entries(item.craft).forEach(([mid, n]) => { character.inventory[mid] -= n; });
-  character.inventory[invKey] = (character.inventory[invKey] || 0) + 1;
+  let craftCount = 1;
+  let craftMsg = "";
+
+  // Resource Efficiency tree: roll d6 for ingredient saving / double craft.
+  const hasSpreadThin = isUnlocked("resource", 1);
+  if (hasSpreadThin) {
+    const hasEfficient = isUnlocked("resource", 2);
+    const hasHighYield = isUnlocked("resource", 3);
+    const saveThreshold = hasEfficient || hasHighYield ? 4 : 6; // 4–6 with Efficient/High Yield, only 6 with Spread Thin
+    const d6 = rollDie(6);
+    if (d6 >= saveThreshold) {
+      // Refund a random ingredient.
+      const mats = Object.keys(item.craft);
+      const refund = mats[Math.floor(Math.random() * mats.length)];
+      character.inventory[refund] = (character.inventory[refund] || 0) + 1;
+      const matName = (GAME_DATA.invById[refund] || {}).name || refund;
+      craftMsg = ` (d6: ${d6} — saved 1 ${matName}!)`;
+      if (hasHighYield && d6 === 6) {
+        craftCount = 2;
+        craftMsg = ` (d6: ${d6} — saved 1 ${matName} + crafted double!)`;
+      }
+    } else {
+      craftMsg = ` (d6: ${d6} — no bonus)`;
+    }
+  }
+
+  character.inventory[invKey] = (character.inventory[invKey] || 0) + craftCount;
   const qLabel = qualityLabel(quality);
   save(); renderAll();
-  toast(`Crafted ${qLabel ? qLabel + " " : ""}${item.name}`);
+  toast(`Crafted ${craftCount > 1 ? "2× " : ""}${qLabel ? qLabel + " " : ""}${item.name}${craftMsg}`);
 });
 document.getElementById("crafting").addEventListener("change", e => {
   const sel = e.target.closest("[data-craft-quality]");
