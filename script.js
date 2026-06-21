@@ -63,7 +63,7 @@ const WEAPON_TYPE_LABEL = { rifle: "Rifle", shotgun: "Shotgun", handgun: "Handgu
 
 GAME_DATA.backgrounds = {
   brawler: {
-    id: "brawler", name: "Brawler", icon: "🔨", flavor: "armored in muscle",
+    id: "brawler", name: "Brawler", icon: "🔨", flavor: "armored in muscle", save: "str",
     perks: [
       { type: "weapon", choice: "Blunt Melee" },
       { type: "skill", choice: "Athletics" },
@@ -79,7 +79,7 @@ GAME_DATA.backgrounds = {
     },
   },
   sharpshooter: {
-    id: "sharpshooter", name: "Sharpshooter", icon: "🎯", flavor: "one shot, one kill",
+    id: "sharpshooter", name: "Sharpshooter", icon: "🎯", flavor: "one shot, one kill", save: "wis",
     perks: [
       { type: "weapon", choice: "Rifles" },
       { type: "skill", choice: "Perception" },
@@ -95,7 +95,7 @@ GAME_DATA.backgrounds = {
     },
   },
   medic: {
-    id: "medic", name: "Medic", icon: "🩹", flavor: "keeps the group breathing",
+    id: "medic", name: "Medic", icon: "🩹", flavor: "keeps the group breathing", save: "wis",
     perks: [
       { type: "weapon", choice: "Handguns" },
       { type: "skill", choice: "Medicine" },
@@ -111,7 +111,7 @@ GAME_DATA.backgrounds = {
     },
   },
   smuggler: {
-    id: "smuggler", name: "Smuggler", icon: "📦", flavor: "gets the goods, gets around",
+    id: "smuggler", name: "Smuggler", icon: "📦", flavor: "gets the goods, gets around", save: "cha",
     perks: [
       { type: "weapon", choice: "Handguns" },
       { type: "skill", choice: "Investigation" },
@@ -127,7 +127,7 @@ GAME_DATA.backgrounds = {
     },
   },
   hunter: {
-    id: "hunter", name: "Hunter", icon: "🐺", flavor: "stalks, hides, strikes unseen",
+    id: "hunter", name: "Hunter", icon: "🐺", flavor: "stalks, hides, strikes unseen", save: "dex",
     perks: [
       { type: "weapon", choice: "Bows" },
       { type: "skill", choice: "Stealth" },
@@ -140,6 +140,21 @@ GAME_DATA.backgrounds = {
     gear: {
       weapons: [tmplWeapon("Hunting Bow", "bow")],
       inventory: { arrows: 8, shiv: 1 },
+    },
+  },
+  tinker: {
+    id: "tinker", name: "Tinker", icon: "🔧", flavor: "still the one who could fix it", save: "int",
+    perks: [
+      { type: "weapon", choice: "Handguns" },
+      { type: "skill", choice: "Engineering" },
+    ],
+    backgroundPerk: {
+      name: "Tinker's Gadgets",
+      dash: [{ cat: CAT.PASSIVE, name: "Tinker's Gadgets", desc: "During a rest, build small improvised non-combat gadgets from scrap. Up to 2 active at once (Noisemaker, Hand Light, Tripwire Sensor, Striker, Shim). A gadget never deals damage or replaces a weapon/crafted item." }],
+    },
+    gear: {
+      weapons: [tmplWeapon("9mm Pistol", "handgun", { currentAmmo: 2, maxAmmo: 12 })],
+      inventory: { handgunAmmo: 2, binding: 1, scrap: 1 },
     },
   },
 };
@@ -360,12 +375,24 @@ GAME_DATA.inventory = [
     { id: "arrows", name: "Arrows", icon: "inv-arrows", desc: "Ammunition for bows. Can sometimes be retrieved after combat." },
   ]},
   { group: "Crafted Items", items: [
-    { id: "bandage", name: "Bandage", icon: "inv-bandage", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Heals 1d4 + CON when used. Crafting consumes 1 Rag + 1 Alcohol." },
-    { id: "molotov", name: "Molotov", icon: "inv-molotov", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 }, desc: "Thrown (DEX) weapon: 1d10 fire on a hit; creatures within 5 ft make a DC 15 DEX save or catch fire (1d4/turn). Single-use. Crafting consumes 1 Rag + 1 Alcohol." },
-    { id: "shiv", name: "Shiv", icon: "inv-shiv", recipe: "Scrap + Binding", craft: { scrap: 1, binding: 1 }, desc: "1d8 piercing, Quiet. Instant kill vs an Unaware creature with max HP ≤ 30 (no roll); tougher targets are immune and just take the 1d8. Breaks after use unless Hardened (resists once) or Masterwork (resists twice). Crafting consumes 1 Scrap + 1 Binding." },
-    { id: "silencer", name: "Makeshift Suppressor", icon: "inv-silencer", recipe: "Rag + Bottle", craft: { rag: 1, bottle: 1 }, desc: "Handgun attachment. Its shots become Quiet. Improvised and fragile: each shot, roll a d6 — on a 1 it's spent (that shot still fires Quiet; the gun is Very Loud afterward). About six quiet shots on average. Crafting consumes 1 Rag + 1 Bottle." },
-    { id: "upgradedWeapon", name: "Upgraded Improv. Weapon", icon: "inv-upgradedWeapon", recipe: "2× Scrap + Binding", craft: { scrap: 2, binding: 1 }, desc: "An improvised weapon reinforced to deal 1d10 damage and only break on a roll of 1. Crafting consumes 2 Scrap + 1 Binding, as well as an improvised weapon" },
-    { id: "medkit", name: "Medkit", icon: "inv-medkit", recipe: "Found only", desc: "Heals 2d6 + CON when used. Cannot be crafted — found only." },
+    { id: "bandage", name: "Bandage", icon: "inv-bandage", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 },
+      use: { Heals: "1d4 + CON", Use: "Action (bonus for Medic)", Range: "Self / touch" },
+      desc: "Heals 1d4 + CON when used. Crafting consumes 1 Rag + 1 Alcohol." },
+    { id: "molotov", name: "Molotov", icon: "inv-molotov", recipe: "Rag + Alcohol", craft: { rag: 1, alcohol: 1 },
+      use: { Damage: "1d10 fire", Range: "Thrown, 40 + 5×STR ft (min 35)", DC: "DC 15 DEX save (within 5 ft) or catch fire 1d4/turn", Use: "Action · single-use" },
+      desc: "Thrown (DEX) weapon: 1d10 fire on a hit; creatures within 5 ft make a DC 15 DEX save or catch fire (1d4/turn). Single-use. Crafting consumes 1 Rag + 1 Alcohol." },
+    { id: "shiv", name: "Shiv", icon: "inv-shiv", recipe: "Scrap + Binding", craft: { scrap: 1, binding: 1 },
+      use: { Damage: "1d8 piercing", Range: "Melee (5 ft)", Sound: "Quiet", Special: "Instant kill vs Unaware target with max HP ≤ 30 (no roll); tougher targets just take 1d8" },
+      desc: "1d8 piercing, Quiet. Instant kill vs an Unaware creature with max HP ≤ 30 (no roll); tougher targets are immune and just take the 1d8. Breaks after use unless Hardened (resists once) or Masterwork (resists twice). Crafting consumes 1 Scrap + 1 Binding." },
+    { id: "silencer", name: "Makeshift Suppressor", icon: "inv-silencer", recipe: "Rag + Bottle", craft: { rag: 1, bottle: 1 },
+      use: { Type: "Handgun attachment", Use: "Bonus action to attach", Special: "Shots become Quiet; each shot roll d6 — spent on a 1 (~6 quiet shots)" },
+      desc: "Handgun attachment. Its shots become Quiet. Improvised and fragile: each shot, roll a d6 — on a 1 it's spent (that shot still fires Quiet; the gun is Very Loud afterward). About six quiet shots on average. Crafting consumes 1 Rag + 1 Bottle." },
+    { id: "upgradedWeapon", name: "Upgraded Improv. Weapon", icon: "inv-upgradedWeapon", recipe: "2× Scrap + Binding", craft: { scrap: 2, binding: 1 },
+      use: { Damage: "1d10 + STR", Range: "Melee (5 ft)", Durability: "Durability Check (d4): breaks only on a 1" },
+      desc: "An improvised weapon reinforced to deal 1d10 damage and only break on a roll of 1. Crafting consumes 2 Scrap + 1 Binding, as well as an improvised weapon" },
+    { id: "medkit", name: "Medkit", icon: "inv-medkit", recipe: "Found only",
+      use: { Heals: "2d6 + CON per use", Uses: "1d3 (roll when found)", Use: "Action (bonus for Medic)" },
+      desc: "Heals 2d6 + CON when used. Cannot be crafted — found only." },
   ]},
 ];
 /* flat lookup */
@@ -469,7 +496,7 @@ function defaultCharacter() {
     name: "",
     background: "",
     level: 1,
-    abilities: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
+    abilities: { str: 16, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
     currentHP: 10,
     tempHP: 0,
     wearingArmor: false,
@@ -624,11 +651,20 @@ function derive() {
   const bg = GAME_DATA.backgrounds[character.background];
   const allPerks = (bg ? bg.perks : []).concat(character.perks);
   const profSkills = new Set(allPerks.filter(p => p.type === "skill").map(p => p.choice));
-  const profSaveAbility = (allPerks.find(p => p.type === "steel") || {}).choice;
-  const profSaveKey = profSaveAbility ? profSaveAbility.replace(" Saves", "").toLowerCase() : null;
+  // Save proficiencies come from the background (always one) and Steel Nerves perks.
+  const profSaves = new Set();
+  if (bg && bg.save) profSaves.add(bg.save);
+  allPerks.filter(p => p.type === "steel" && p.choice).forEach(p => {
+    profSaves.add(p.choice.replace(" Saves", "").toLowerCase());
+  });
 
   d.saves = {};
-  ABILITIES.forEach(a => { d.saves[a] = mods[a] + (a === profSaveKey ? pb : 0); });
+  d.saveProf = {};
+  ABILITIES.forEach(a => {
+    const prof = profSaves.has(a);
+    d.saves[a] = mods[a] + (prof ? pb : 0);
+    d.saveProf[a] = prof;
+  });
 
   d.skills = {};
   Object.keys(SKILL_ABILITY).forEach(skill => {
@@ -856,7 +892,7 @@ function weaponDamageFormula(w) {
 /* Durability rules for weapons that have them (rulebook p.22). */
 function weaponDurability(w) {
   if (w.category === "improvised") {
-    const tough = w.upgraded || isUnlocked("improvised", 1); // Upgraded, or a Scrap Brawler
+    const tough = w.upgraded || /upgrad/i.test(w.name || "") || isUnlocked("improvised", 1); // Upgraded, or a Scrap Brawler
     return { die: 4, breakAt: tough ? 1 : 3,
       label: tough ? "breaks only on a 1" : "breaks on 1–3" };
   }
@@ -1207,12 +1243,22 @@ function rollDamage(formula, label) {
   addRollLog(label, detail, total);
 }
 
-/* Roll d20 + a flat modifier and log it */
-function rollD20(modifier, label) {
-  const die = rollDie(20);
+/* Roll d20 + a flat modifier and log it. adv: 1 = advantage, -1 = disadvantage. */
+function rollD20(modifier, label, adv = 0) {
+  let die, detail;
+  if (adv === 0) {
+    die = rollDie(20);
+    detail = `d20 [${die}] ${fmtMod(modifier)}`;
+  } else {
+    const a = rollDie(20), b = rollDie(20);
+    die = adv > 0 ? Math.max(a, b) : Math.min(a, b);
+    const word = adv > 0 ? "adv" : "dis";
+    detail = `d20 ${word} [${a}, ${b}] → ${die} ${fmtMod(modifier)}`;
+  }
   const total = die + modifier;
   const natType = die === 20 ? "nat20" : die === 1 ? "nat1" : null;
-  addRollLog(label, `d20 [${die}] ${fmtMod(modifier)}`, total, natType);
+  const advTag = adv > 0 ? " (Advantage)" : adv < 0 ? " (Disadvantage)" : "";
+  addRollLog(label + advTag, detail, total, natType);
 }
 
 /* ============================================================
@@ -1577,10 +1623,6 @@ function renderWeapons() {
         </div>
       </div>
 
-      <div class="weapon-rolls">
-        <button class="attack-roll-btn" data-roll-attack="${w.id}">${icon("attack")} Attack ${fmtMod(weaponToHitMod(w))}</button>
-      </div>
-
       <div class="weapon-stats">
         <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val rollable" data-roll-damage="${w.id}" title="Click to roll">${esc(weaponDamageFormula(w) || "—")}</div></div>
         <div class="wstat"><div class="ws-lbl">Range</div><div class="ws-val">${esc(w.range || "—")}</div></div>
@@ -1588,16 +1630,17 @@ function renderWeapons() {
         <div class="wstat"><div class="ws-lbl">Ammo Type</div><div class="ws-val">${esc(w.ammoType || "—")}</div></div>
       </div>
 
-      <div class="ammo-track ${hasAmmo ? "" : "none"}">
+      ${hasAmmo ? `
+      <div class="ammo-track">
         <div class="ammo-top">
           <span class="ammo-label">Current Ammo</span>
           <span class="ammo-count"><span class="cur">${w.currentAmmo || 0}</span><span class="max"> / ${w.maxAmmo || 0}</span></span>
         </div>
-        <div class="ammo-controls">
-          <button class="ammo-btn minus" data-ammo="${w.id}:-1">−</button>
-          <button class="ammo-btn plus" data-ammo="${w.id}:1">＋</button>
-          <button class="ammo-btn reload" data-ammo="${w.id}:reload">RELOAD</button>
-        </div>
+      </div>` : ""}
+
+      <div class="fire-row">
+        <button class="fire-btn shoot" data-shoot="${w.id}" title="Roll attack (right-click / long-press for advantage)">${icon("attack")} SHOOT ${fmtMod(weaponToHitMod(w))}</button>
+        ${hasAmmo ? `<button class="fire-btn reload" data-ammo="${w.id}:reload">RELOAD</button>` : ""}
       </div>
 
       ${(dur || w.category === "bow") ? `
@@ -1763,17 +1806,17 @@ function renderBackpack() {
         QUALITY_TIERS.forEach(q => {
           const key = qualityInvKey(it.id, q);
           const qty = character.inventory[key] || 0;
-          const qBadge = q ? ` <span class="quality-badge ${q}">${qualityLabel(q)}</span>` : "";
-          const label = q ? `${it.name} (${qualityLabel(q)})` : it.name;
-          cards.push(`<div class="inv-item ${qty > 0 ? "has-qty" : "zero"}" data-item-info="${it.id}">
+          const qTag = q ? `<div class="inv-quality-tag ${q}">${qualityLabel(q)}</div>` : "";
+          cards.push(`<div class="inv-item quality-${q || "standard"} ${qty > 0 ? "has-qty" : "zero"}" data-item-info="${it.id}">
+            ${qTag}
             <span class="inv-icon">${icon(it.icon)}</span>
-            <div class="inv-name">${esc(it.name)}${qBadge}</div>
+            <div class="inv-name">${esc(it.name)}</div>
             <div class="inv-qty">${qty}</div>
             <div class="inv-controls">
               <button class="inv-btn minus" data-inv="${key}:-1">−</button>
               <button class="inv-btn plus" data-inv="${key}:1">＋</button>
             </div>
-            ${!q && it.recipe ? `<div class="inv-recipe">${esc(it.recipe)}</div>` : ""}
+            ${it.recipe ? `<div class="inv-recipe">${esc(it.recipe)}</div>` : ""}
           </div>`);
         });
       } else {
@@ -1845,8 +1888,10 @@ function renderCrafting() {
     const have = (id, n) => (character.inventory[id] || 0) >= n;
     const canCraft = Object.entries(it.craft).every(([id, n]) => have(id, n));
     let qualitySelect = "";
-    if (canImproveQuality(it)) {
-      const opts = QUALITY_TIERS.filter(q => canMakeQuality(q)).map(q => {
+    // Only show the quality picker if a crafting perk unlocks a tier above Standard.
+    const tiers = canImproveQuality(it) ? QUALITY_TIERS.filter(q => canMakeQuality(q)) : [""];
+    if (tiers.length > 1) {
+      const opts = tiers.map(q => {
         const label = q ? qualityLabel(q) : "Standard";
         const sel = craftQuality[it.id] === q ? " selected" : "";
         return `<option value="${q}"${sel}>${label}</option>`;
@@ -1957,10 +2002,20 @@ function renderRollsTab() {
 
   document.getElementById("roll-saves").innerHTML = ABILITIES.map(a => `
     <div class="roll-card">
-      <div class="rc-name">${ABILITY_NAMES[a]}</div>
+      <div class="rc-name">${ABILITY_NAMES[a]}${D.saveProf[a] ? " ★" : ""}</div>
       <div class="rc-sub">Saving Throw</div>
       <div class="rc-mod" data-roll-d20="${D.saves[a]}" data-roll-label="${esc(ABILITY_NAMES[a])} Save">${fmtMod(D.saves[a])}</div>
     </div>`).join("");
+
+  const initEl = document.getElementById("roll-initiative");
+  if (initEl) {
+    initEl.innerHTML = `
+      <div class="roll-card">
+        <div class="rc-name">Initiative${D.flags.initAdvantage ? " ▲" : ""}</div>
+        <div class="rc-sub">Combat Start</div>
+        <div class="rc-mod" data-roll-d20="${D.initiative}" data-roll-label="Initiative"${D.flags.initAdvantage ? ' data-roll-adv="1"' : ""}>${fmtMod(D.initiative)}</div>
+      </div>`;
+  }
 
   document.getElementById("roll-skills").innerHTML = Object.keys(SKILL_ABILITY).map(skill => {
     const s = D.skills[skill];
@@ -2231,16 +2286,41 @@ document.getElementById("status-active").addEventListener("click", e => {
 });
 document.getElementById("status-adder").addEventListener("click", e => {
   if (e.target.id === "status-custom") {
-    const v = prompt("Custom status effect:");
-    if (v && v.trim()) { character.statuses.push(v.trim()); save(); renderAll(); }
+    openCustomStatusModal();
     return;
   }
   const label = e.target.dataset.addStatus;
   if (label) { character.statuses.push(label); save(); renderAll(); }
 });
 
+function openCustomStatusModal() {
+  showModal(`
+    <div class="modal-head"><h3>Custom Status Effect</h3><button class="modal-close" data-modal-close>✕</button></div>
+    <div class="modal-body">
+      <label class="field"><span class="field-label">Status name</span>
+        <input id="custom-status-name" type="text" placeholder="e.g. Poisoned, Inspired…" autofocus />
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" data-modal-close>Cancel</button>
+      <button class="btn accent" id="custom-status-save">Add</button>
+    </div>
+  `);
+  const input = document.getElementById("custom-status-name");
+  const add = () => {
+    const v = input.value.trim();
+    if (!v) { input.focus(); return; }
+    character.statuses.push(v);
+    save(); hideModal(); renderAll();
+  };
+  document.getElementById("custom-status-save").addEventListener("click", add);
+  input.addEventListener("keydown", ev => { if (ev.key === "Enter") add(); });
+}
+
 /* Weapons: ammo, edit, delete (delegated) */
 document.getElementById("weapons-grid").addEventListener("click", e => {
+  const shootBtn = e.target.closest("[data-shoot]");
+  if (shootBtn) { fireWeapon(shootBtn.dataset.shoot, 0); return; }
   const atkBtn = e.target.closest("[data-roll-attack]");
   if (atkBtn) {
     const w = character.weapons.find(x => x.id === atkBtn.dataset.rollAttack);
@@ -2325,6 +2405,69 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
     }
   }
 });
+
+/* ---- Advantage / Disadvantage roll menu (right-click or long-press) ----
+   Any rollable d20 element can be rolled with advantage or disadvantage. */
+const ROLLABLE_SELECTOR = "[data-roll-d20],[data-roll-ability],[data-shoot]";
+
+function rollWithAdv(el, adv) {
+  if (el.dataset.shoot != null) { fireWeapon(el.dataset.shoot, adv); return; }
+  if (el.dataset.rollAbility != null) {
+    const a = el.dataset.rollAbility;
+    rollD20(D.mods[a], `${ABILITY_NAMES[a]} Check`, adv);
+    return;
+  }
+  if (el.dataset.rollD20 != null) {
+    rollD20(Number(el.dataset.rollD20), el.dataset.rollLabel || "Roll", adv);
+  }
+}
+
+function showAdvMenu(x, y, el) {
+  hideAdvMenu();
+  const menu = document.createElement("div");
+  menu.id = "adv-menu";
+  menu.innerHTML = `
+    <button class="adv-opt adv-up">▲ Advantage</button>
+    <button class="adv-opt adv-down">▼ Disadvantage</button>`;
+  document.body.appendChild(menu);
+  // Keep the menu on-screen.
+  const mw = 170, mh = 84;
+  menu.style.left = Math.min(x, window.innerWidth - mw - 8) + "px";
+  menu.style.top = Math.min(y, window.innerHeight - mh - 8) + "px";
+  menu.querySelector(".adv-up").addEventListener("click", () => { rollWithAdv(el, 1); hideAdvMenu(); });
+  menu.querySelector(".adv-down").addEventListener("click", () => { rollWithAdv(el, -1); hideAdvMenu(); });
+}
+function hideAdvMenu() {
+  const m = document.getElementById("adv-menu");
+  if (m) m.remove();
+}
+document.addEventListener("contextmenu", e => {
+  const el = e.target.closest(ROLLABLE_SELECTOR);
+  if (!el) return;
+  e.preventDefault();
+  showAdvMenu(e.clientX, e.clientY, el);
+});
+document.addEventListener("click", e => {
+  if (!e.target.closest("#adv-menu")) hideAdvMenu();
+}, true);
+window.addEventListener("scroll", hideAdvMenu, true);
+
+/* Long-press opens the same menu on touch devices. */
+let lpTimer = 0, lpFired = false;
+document.addEventListener("touchstart", e => {
+  const el = e.target.closest(ROLLABLE_SELECTOR);
+  if (!el) return;
+  lpFired = false;
+  const t = e.touches[0];
+  lpTimer = setTimeout(() => { lpFired = true; showAdvMenu(t.clientX, t.clientY, el); }, 500);
+}, { passive: true });
+function cancelLongPress() { clearTimeout(lpTimer); }
+document.addEventListener("touchmove", cancelLongPress, { passive: true });
+document.addEventListener("touchend", e => {
+  cancelLongPress();
+  // Swallow the click that follows a long-press so it doesn't also do a normal roll.
+  if (lpFired) { e.preventDefault(); lpFired = false; }
+}, { passive: false });
 
 /* Backpack qty / item info (delegated) */
 document.getElementById("backpack").addEventListener("click", e => {
@@ -2608,6 +2751,31 @@ function openAttachmentModal(weaponId) {
   refresh();
 }
 
+/* Shoot: roll the attack (optional advantage/disadvantage) and spend 1 ammo
+   if the weapon uses ammo, applying the Makeshift Suppressor d6 rule. */
+function fireWeapon(weaponId, adv = 0) {
+  const w = character.weapons.find(x => x.id === weaponId);
+  if (!w) return;
+  const hasAmmo = w.maxAmmo > 0 || (w.ammoType && w.ammoType.trim());
+  if (hasAmmo && (w.currentAmmo || 0) <= 0) {
+    toast(`${w.name || "Weapon"} is out of ammo — reload.`);
+    return;
+  }
+  rollD20(weaponToHitMod(w), `${w.name || "Weapon"} — Attack`, adv);
+  if (hasAmmo) {
+    w.currentAmmo -= 1;
+    const supIdx = (w.attachments || []).findIndex(a => a.key === "suppressor");
+    if (supIdx >= 0) {
+      const d6 = rollDie(6);
+      if (d6 === 1) {
+        w.attachments.splice(supIdx, 1);
+        toast(`Suppressor spent (rolled 1). ${w.name || "Gun"} is Very Loud now.`);
+      }
+    }
+    save(); renderAll();
+  }
+}
+
 /* Durability Check (improvised weapons): roll d4 vs the break threshold. */
 function rollDurabilityCheck(weaponId) {
   const w = character.weapons.find(x => x.id === weaponId);
@@ -2759,9 +2927,22 @@ function openArmorModal() {
 function showItemPopup(id) {
   const item = GAME_DATA.invById[id] || character.customItems.find(it => it.id === id);
   if (!item) return;
+  let useGrid = "";
+  if (item.use) {
+    const rows = Object.entries(item.use).map(([k, v]) =>
+      `<div class="iu-row"><span class="iu-key">${esc(k)}</span><span class="iu-val">${esc(v)}</span></div>`).join("");
+    let qNote = "";
+    if (canImproveQuality(item)) {
+      qNote = `<div class="iu-quality">Hardened: +2 to hit / +2 save DC (bandages heal +2). Masterwork: +3 / +3 (heal +3).</div>`;
+    }
+    useGrid = `<div class="item-use">${rows}</div>${qNote}`;
+  }
   showModal(`
     <div class="modal-head"><h3>${esc(item.name)}</h3><button class="modal-close" data-modal-close>✕</button></div>
-    <div class="modal-body"><div class="modal-item-body">${esc(item.desc || "No description.")}</div></div>
+    <div class="modal-body">
+      ${useGrid}
+      <div class="modal-item-body">${esc(item.desc || "No description.")}</div>
+    </div>
   `);
 }
 
