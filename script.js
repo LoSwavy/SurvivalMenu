@@ -1630,17 +1630,24 @@ function renderWeapons() {
         <div class="wstat"><div class="ws-lbl">Ammo Type</div><div class="ws-val">${esc(w.ammoType || "—")}</div></div>
       </div>
 
-      ${hasAmmo ? `
+      ${hasAmmo && w.category !== "bow" ? `
       <div class="ammo-track">
         <div class="ammo-top">
           <span class="ammo-label">Current Ammo</span>
           <span class="ammo-count"><span class="cur">${w.currentAmmo || 0}</span><span class="max"> / ${w.maxAmmo || 0}</span></span>
         </div>
       </div>` : ""}
+      ${w.category === "bow" ? `
+      <div class="ammo-track">
+        <div class="ammo-top">
+          <span class="ammo-label">Arrows</span>
+          <span class="ammo-count"><span class="cur">${character.inventory.arrows || 0}</span></span>
+        </div>
+      </div>` : ""}
 
       <div class="fire-row">
         <button class="fire-btn shoot" data-shoot="${w.id}" title="Roll attack (right-click / long-press for advantage)">${icon("attack")} SHOOT ${fmtMod(weaponToHitMod(w))}</button>
-        ${hasAmmo ? `<button class="fire-btn reload" data-ammo="${w.id}:reload">RELOAD</button>` : ""}
+        ${hasAmmo && w.category !== "bow" ? `<button class="fire-btn reload" data-ammo="${w.id}:reload">RELOAD</button>` : ""}
       </div>
 
       ${(dur || w.category === "bow") ? `
@@ -2757,6 +2764,14 @@ function openAttachmentModal(weaponId) {
 function fireWeapon(weaponId, adv = 0) {
   const w = character.weapons.find(x => x.id === weaponId);
   if (!w) return;
+  const isBow = w.category === "bow";
+  if (isBow) {
+    if ((character.inventory.arrows || 0) <= 0) { toast("No arrows left."); return; }
+    rollD20(weaponToHitMod(w), `${w.name || "Bow"} — Attack`, adv);
+    character.inventory.arrows -= 1;
+    save(); renderAll();
+    return;
+  }
   const hasAmmo = w.maxAmmo > 0 || (w.ammoType && w.ammoType.trim());
   if (hasAmmo && (w.currentAmmo || 0) <= 0) {
     toast(`${w.name || "Weapon"} is out of ammo — reload.`);
