@@ -1804,6 +1804,7 @@ function renderBackpack() {
     group.items.forEach(it => {
       if (isCraftable(it) && canImproveQuality(it)) {
         QUALITY_TIERS.forEach(q => {
+          if (q && !canMakeQuality(q)) return;
           const key = qualityInvKey(it.id, q);
           const qty = character.inventory[key] || 0;
           const qTag = q ? `<div class="inv-quality-tag ${q}">${qualityLabel(q)}</div>` : "";
