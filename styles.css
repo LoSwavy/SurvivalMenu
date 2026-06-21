@@ -981,6 +981,53 @@ body[data-active-tab]:not([data-active-tab="character"]) .ref-panel {
 .quality-badge.hardened { color: #cfe0a6; border: 1px solid var(--green-deep); background: var(--green-glow); }
 .quality-badge.masterwork { color: #f0d488; border: 1px solid #6b5232; background: rgba(176,106,58,0.16); }
 
+/* Crafted-item quality cards: tag at top, colored card, centered icon */
+.inv-item .inv-icon { display: flex; align-items: center; justify-content: center; }
+.inv-quality-tag {
+  font-size: 0.56rem; text-transform: uppercase; letter-spacing: 0.7px; font-weight: 800;
+  border-radius: 5px; padding: 2px 0; margin-bottom: 6px;
+}
+.inv-quality-tag.hardened { color: #d6e6ab; background: var(--green-glow); border: 1px solid var(--green-deep); }
+.inv-quality-tag.masterwork { color: #f4d98c; background: rgba(176,106,58,0.18); border: 1px solid #7a5c36; }
+.inv-item.quality-hardened { border-color: var(--green-deep); background: linear-gradient(180deg, rgba(120,160,70,0.14), var(--card)); }
+.inv-item.quality-hardened.has-qty { box-shadow: inset 0 0 0 1px var(--green-deep); }
+.inv-item.quality-masterwork { border-color: #7a5c36; background: linear-gradient(180deg, rgba(176,106,58,0.16), var(--card)); }
+.inv-item.quality-masterwork.has-qty { box-shadow: inset 0 0 0 1px #8a6a40; }
+
+/* Shoot / Reload fire row */
+.fire-row { display: flex; gap: 8px; margin-top: 10px; }
+.fire-btn {
+  min-height: var(--tap); border-radius: 8px; border: 1px solid var(--line);
+  font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.fire-btn:active { transform: translateY(2px); }
+.fire-btn.shoot {
+  flex: 1.6; color: #ffd9d2; border-color: #7d2a22; letter-spacing: 0.5px;
+  background: linear-gradient(180deg, #8c2f25, #6f231b);
+}
+.fire-btn.shoot .icon { filter: brightness(0) invert(1); width: 1.05rem; height: 1.05rem; }
+.fire-btn.reload { flex: 1; font-size: 0.76rem; color: var(--text-dim); letter-spacing: 0.5px; background: var(--bg-2); }
+
+/* Advantage / disadvantage context menu */
+#adv-menu {
+  position: fixed; z-index: 9999; display: flex; flex-direction: column; gap: 6px;
+  padding: 8px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card); box-shadow: 0 8px 28px rgba(0,0,0,0.55); min-width: 160px;
+}
+.adv-opt {
+  padding: 10px 12px; border-radius: 8px; font-weight: 800; font-size: 0.82rem; cursor: pointer;
+  border: 1px solid var(--line); text-align: left;
+}
+.adv-opt.adv-up { color: #d6e6ab; border-color: var(--green-deep); background: var(--green-glow); }
+.adv-opt.adv-down { color: #ffc9c0; border-color: #7d2a22; background: rgba(140,47,37,0.22); }
+
+/* Item-use info grid in the item popup */
+.item-use { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.iu-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); }
+.iu-key { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-faint); font-weight: 800; white-space: nowrap; }
+.iu-val { font-size: 0.82rem; color: var(--text); text-align: right; }
+.iu-quality { font-size: 0.68rem; color: var(--text-faint); margin: -4px 0 12px; font-style: italic; }
+
 .durability-row { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
 .dura-btn {
   display: inline-flex; align-items: center; gap: 6px; font-size: 0.7rem; font-weight: 700;
