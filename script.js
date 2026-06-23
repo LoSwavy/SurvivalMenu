@@ -208,12 +208,12 @@ GAME_DATA.skillTrees = {
     tiers: [
       { name: "Iron Fist", cost: T1, desc: "Fists & blunt melee are +1 weapons. Once per turn, after a melee attack, Grapple a creature in reach as a bonus action (contested Athletics).",
         dash: [{ cat: CAT.BONUS, name: "Grapple", desc: "After a melee attack, grapple a creature in reach (contested Athletics)." }],
-        weapon: { match: (w) => w.category === "blunt", name: "Iron Fist (+1)", desc: "Counts as a +1 weapon.", toHit: 1, dmg: 1, group: "cqc" } },
+        weapon: { match: (w) => w.category === "blunt" || w.id === "v-fists", name: "Iron Fist (+1)", desc: "Counts as a +1 weapon.", toHit: 1, dmg: 1, group: "cqc" } },
       { name: "Break Them Down", cost: T2, desc: "Once per turn on a melee hit: push 5 ft; or target makes a STR save vs your Maneuver DC — on a fail, Disadvantage on its next attack or drops a held item.",
         dash: [{ cat: CAT.PASSIVE, name: "Break Them Down", desc: "On a melee hit (1/turn): push 5 ft, or force STR save vs your Maneuver DC to debuff/disarm." }] },
       { name: "Chain Fighter", cost: T3, desc: "Fists & blunt melee become +2 weapons. When you drop a creature to 0 HP, move up to 10 ft and make one free melee attack.",
         dash: [{ cat: CAT.PASSIVE, name: "Chain Fighter", desc: "On a melee kill: move 10 ft and make one free melee attack." }],
-        weapon: { match: (w) => w.category === "blunt", name: "Chain Fighter (+2)", desc: "Counts as a +2 weapon (overrides Iron Fist).", toHit: 2, dmg: 2, group: "cqc" } },
+        weapon: { match: (w) => w.category === "blunt" || w.id === "v-fists", name: "Chain Fighter (+2)", desc: "Counts as a +2 weapon (overrides Iron Fist).", toHit: 2, dmg: 2, group: "cqc" } },
     ],
   },
   handgun: {
@@ -792,6 +792,7 @@ function weaponBonuses(weapon) {
 /* Weapon category -> Weapon Training choice that grants proficiency */
 const WEAPON_PROF_MAP = { blunt: "Blunt Melee", improvised: "Improvised", handgun: "Handguns", rifle: "Rifles", shotgun: "Shotguns", bow: "Bows" };
 function weaponProficient(w) {
+  if (w.id === "v-fists") return true;
   const bg = GAME_DATA.backgrounds[character.background];
   const allPerks = (bg ? bg.perks : []).concat(character.perks);
   const need = WEAPON_PROF_MAP[w.category];
