@@ -810,7 +810,7 @@ function weaponToHitMod(w) {
 }
 /* Brutal: improvised weapons instantly kill enemies already below half HP. */
 function weaponBrutal(w) {
-  return w.brutal === true || (w.brutal !== false && w.category === "improvised");
+  return w.brutal === true || (w.brutal !== false && w.category === "improvised" && w.upgraded);
 }
 
 /* Is a skill-tree tier unlocked? (tier is 1-based) */
