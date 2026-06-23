@@ -858,26 +858,27 @@ function virtualWeapons() {
     damage: fistDmg, range: "Melee (5 ft)", sound: "Medium", brutal: false, attachments: [],
     notes: "Unarmed strike. Counts as an Improvised weapon for proficiency.",
   });
-  if (totalCraftedQty("shiv") > 0) {
-    const q = nextConsumableQuality("shiv");
+  // One card per quality tier you actually carry (Standard / Hardened / Masterwork).
+  QUALITY_TIERS.forEach(q => {
+    if ((character.inventory[qualityInvKey("shiv", q)] || 0) <= 0) return;
     out.push({
-      id: "v-shiv", virtual: true, consumes: "shiv", quality: q, name: "Shiv",
+      id: "v-shiv" + (QUALITY_SUFFIX[q] || ""), virtual: true, consumes: "shiv", quality: q, name: "Shiv",
       category: "melee", ability: "dex", damage: "1d8", range: "Melee (5 ft)", sound: "Quiet",
       brutal: false, attachments: [],
       notes: "Quiet. Instant kill vs an Unaware target with max HP ≤ 30 (no roll); tougher targets just take 1d8. Breaks after use unless Hardened/Masterwork.",
     });
-  }
-  if (totalCraftedQty("molotov") > 0) {
-    const q = nextConsumableQuality("molotov");
-    const strMod = (typeof D !== "undefined" && D.mods) ? D.mods.str : 0;
-    const throwRange = Math.max(35, 40 + 5 * strMod); // 40 + 5×STR mod, floored at 35 ft
+  });
+  const strMod = (typeof D !== "undefined" && D.mods) ? D.mods.str : 0;
+  const throwRange = Math.max(35, 40 + 5 * strMod); // 40 + 5×STR mod, floored at 35 ft
+  QUALITY_TIERS.forEach(q => {
+    if ((character.inventory[qualityInvKey("molotov", q)] || 0) <= 0) return;
     out.push({
-      id: "v-molotov", virtual: true, consumes: "molotov", quality: q, thrown: true, name: "Molotov",
+      id: "v-molotov" + (QUALITY_SUFFIX[q] || ""), virtual: true, consumes: "molotov", quality: q, thrown: true, name: "Molotov",
       category: "thrown", ability: "dex", damage: "1d10", range: `Thrown ${throwRange} ft`, sound: "Very Loud",
       brutal: false, attachments: [],
       notes: `1d10 fire on a hit; creatures within 5 ft make a DC ${15 + qualityToHit(q)} DEX save or catch fire (1d4/turn). Single-use.`,
     });
-  }
+  });
   return out;
 }
 function findAnyWeapon(id) {
@@ -1684,13 +1685,8 @@ function weaponCardHtml(w) {
     const qBadge = w.quality ? `<span class="quality-badge ${w.quality}">${qualityLabel(w.quality)}</span>` : "";
     let carried = "";
     if (w.consumes) {
-      const parts = QUALITY_TIERS.map(q => {
-        const n = character.inventory[qualityInvKey(w.consumes, q)] || 0;
-        if (!n) return null;
-        const label = qualityLabel(q);            // "" for the standard tier
-        return label ? `${n} ${label}` : `${n}`;  // standard tier shows just the count
-      }).filter(Boolean).join(" · ");
-      carried = `<div class="ammo-track"><div class="ammo-top"><span class="ammo-label">In bag</span><span class="ammo-count"><span class="cur">${parts}</span></span></div></div>`;
+      const n = character.inventory[qualityInvKey(w.consumes, w.quality)] || 0;
+      carried = `<div class="ammo-track"><div class="ammo-top"><span class="ammo-label">In bag</span><span class="ammo-count"><span class="cur">${n}</span></span></div></div>`;
     }
     return `<div class="weapon-card cat-${w.category} virtual">
       <div class="weapon-head">
@@ -2930,18 +2926,9 @@ function fireWeapon(weaponId, adv = 0) {
   const w = findAnyWeapon(weaponId);
   if (!w) return;
 
-  if (w.virtual && w.consumes) {
-    const q = nextConsumableQuality(w.consumes);
-    if (!q && q !== "") { toast(`No ${w.consumes} in your bag.`); return; }
-    const key = qualityInvKey(w.consumes, q);
-    if ((character.inventory[key] || 0) <= 0) { toast(`No ${w.consumes} in your bag.`); return; }
-    rollD20(weaponToHitMod(w), `${w.name || "Weapon"} — Attack`, adv);
-    character.inventory[key] -= 1;
-    if (character.inventory[key] <= 0) delete character.inventory[key];
-    save(); renderAll();
-    return;
-  }
   if (w.virtual) {
+    // Shivs/molotovs roll an attack but are NOT auto-consumed — adjust the
+    // count by hand in the Backpack after you use one.
     rollD20(weaponToHitMod(w), `${w.name || "Weapon"} — Attack`, adv);
     return;
   }
