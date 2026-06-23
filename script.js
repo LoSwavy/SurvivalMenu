@@ -1290,11 +1290,20 @@ function addRollLog(title, detail, total, natType) {
 }
 
 /* Roll a formula string (e.g. weapon damage "2d8 + DEX") and log it */
-function rollDamage(formula, label) {
+function rollDamage(formula, label, crit = false, isMelee = false) {
   const parts = parseFormula(formula);
   if (!parts.length) { toast("Nothing to roll."); return; }
-  const { total, detail } = rollFormula(parts);
-  addRollLog(label, detail, total);
+  if (!crit) { const { total, detail } = rollFormula(parts); addRollLog(label, detail, total); return; }
+  if (isMelee) {
+    const maxBonus = parts.filter(p => p.type === "dice").reduce((s, p) => s + p.n * p.sides, 0);
+    const { total, detail } = rollFormula(parts);
+    const critTotal = total + maxBonus;
+    addRollLog(label + " (CRIT)", `${detail} + ${maxBonus} max dice`, critTotal, "nat20");
+  } else {
+    const critParts = parts.map(p => p.type === "dice" ? Object.assign({}, p, { n: p.n * 2 }) : p);
+    const { total, detail } = rollFormula(critParts);
+    addRollLog(label + " (CRIT)", detail, total, "nat20");
+  }
 }
 
 /* Roll d20 + a flat modifier and log it. adv: 1 = advantage, -1 = disadvantage. */
@@ -2510,8 +2519,10 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
 });
 
 /* ---- Advantage / Disadvantage roll menu (right-click or long-press) ----
-   Any rollable d20 element can be rolled with advantage or disadvantage. */
+   Any rollable d20 element can be rolled with advantage or disadvantage.
+   Damage elements get a Crit menu instead. */
 const ROLLABLE_SELECTOR = "[data-roll-d20],[data-roll-ability],[data-shoot]";
+const CRIT_SELECTOR = "[data-roll-damage]";
 
 function rollWithAdv(el, adv) {
   if (el.dataset.shoot != null) { fireWeapon(el.dataset.shoot, adv); return; }
@@ -2525,6 +2536,17 @@ function rollWithAdv(el, adv) {
   }
 }
 
+function weaponIsMelee(w) {
+  return ["blunt", "melee", "improvised"].includes(w.category);
+}
+
+function rollCritFromEl(el) {
+  const w = findAnyWeapon(el.dataset.rollDamage);
+  if (!w) return;
+  const formula = weaponDamageFormula(w);
+  rollDamage(formula, `${w.name || "Weapon"} — Damage`, true, weaponIsMelee(w));
+}
+
 function showAdvMenu(x, y, el) {
   hideAdvMenu();
   const menu = document.createElement("div");
@@ -2533,18 +2555,32 @@ function showAdvMenu(x, y, el) {
     <button class="adv-opt adv-up">▲ Advantage</button>
     <button class="adv-opt adv-down">▼ Disadvantage</button>`;
   document.body.appendChild(menu);
-  // Keep the menu on-screen.
   const mw = 170, mh = 84;
   menu.style.left = Math.min(x, window.innerWidth - mw - 8) + "px";
   menu.style.top = Math.min(y, window.innerHeight - mh - 8) + "px";
   menu.querySelector(".adv-up").addEventListener("click", () => { rollWithAdv(el, 1); hideAdvMenu(); });
   menu.querySelector(".adv-down").addEventListener("click", () => { rollWithAdv(el, -1); hideAdvMenu(); });
 }
+
+function showCritMenu(x, y, el) {
+  hideAdvMenu();
+  const menu = document.createElement("div");
+  menu.id = "adv-menu";
+  menu.innerHTML = `<button class="adv-opt adv-crit">★ Critical Hit</button>`;
+  document.body.appendChild(menu);
+  const mw = 170, mh = 44;
+  menu.style.left = Math.min(x, window.innerWidth - mw - 8) + "px";
+  menu.style.top = Math.min(y, window.innerHeight - mh - 8) + "px";
+  menu.querySelector(".adv-crit").addEventListener("click", () => { rollCritFromEl(el); hideAdvMenu(); });
+}
+
 function hideAdvMenu() {
   const m = document.getElementById("adv-menu");
   if (m) m.remove();
 }
 document.addEventListener("contextmenu", e => {
+  const dmgEl = e.target.closest(CRIT_SELECTOR);
+  if (dmgEl) { e.preventDefault(); showCritMenu(e.clientX, e.clientY, dmgEl); return; }
   const el = e.target.closest(ROLLABLE_SELECTOR);
   if (!el) return;
   e.preventDefault();
@@ -2558,17 +2594,21 @@ window.addEventListener("scroll", hideAdvMenu, true);
 /* Long-press opens the same menu on touch devices. */
 let lpTimer = 0, lpFired = false;
 document.addEventListener("touchstart", e => {
-  const el = e.target.closest(ROLLABLE_SELECTOR);
+  const dmgEl = e.target.closest(CRIT_SELECTOR);
+  const el = dmgEl || e.target.closest(ROLLABLE_SELECTOR);
   if (!el) return;
   lpFired = false;
   const t = e.touches[0];
-  lpTimer = setTimeout(() => { lpFired = true; showAdvMenu(t.clientX, t.clientY, el); }, 500);
+  lpTimer = setTimeout(() => {
+    lpFired = true;
+    if (dmgEl) showCritMenu(t.clientX, t.clientY, dmgEl);
+    else showAdvMenu(t.clientX, t.clientY, el);
+  }, 500);
 }, { passive: true });
 function cancelLongPress() { clearTimeout(lpTimer); }
 document.addEventListener("touchmove", cancelLongPress, { passive: true });
 document.addEventListener("touchend", e => {
   cancelLongPress();
-  // Swallow the click that follows a long-press so it doesn't also do a normal roll.
   if (lpFired) { e.preventDefault(); lpFired = false; }
 }, { passive: false });
 
