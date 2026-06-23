@@ -491,6 +491,7 @@ button, input, select, textarea { font-family: inherit; color: inherit; }
 .bonus-item .bi-name { font-weight: 700; color: var(--green); }
 .bonus-item .bi-desc { color: var(--text-dim); margin-top: 2px; }
 .weapon-notes { font-size: 0.76rem; color: var(--text-dim); font-style: italic; margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
+.brutal-tag { display: inline-block; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #ffd2d2; background: #7d2a22; border-radius: 3px; padding: 1px 6px; margin-left: 6px; vertical-align: middle; }
 .empty-state { text-align: center; color: var(--text-faint); padding: 40px 20px; font-style: italic; }
 
 /* ====================== BACKPACK ====================== */
@@ -1005,6 +1006,11 @@ body[data-active-tab]:not([data-active-tab="character"]) .ref-panel {
   background: linear-gradient(180deg, #8c2f25, #6f231b);
 }
 .fire-btn.shoot .icon, .fire-btn.strike .icon { filter: brightness(0) invert(1); width: 1.05rem; height: 1.05rem; }
+.fire-btn.throw {
+  flex: 1; color: #ffeacc; border-color: #6a4e7a; letter-spacing: 0.5px;
+  background: linear-gradient(180deg, #7a5690, #5c3d6e);
+}
+.fire-btn.throw .icon { filter: brightness(0) invert(1); width: 1.05rem; height: 1.05rem; }
 .fire-btn.strike {
   flex: 1; color: #ffeacc; border-color: #7a5c36; letter-spacing: 0.5px;
   background: linear-gradient(180deg, #8a6a40, #6b4f2a);
