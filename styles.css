@@ -1029,6 +1029,7 @@ body[data-active-tab]:not([data-active-tab="character"]) .ref-panel {
 }
 .adv-opt.adv-up { color: #d6e6ab; border-color: var(--green-deep); background: var(--green-glow); }
 .adv-opt.adv-down { color: #ffc9c0; border-color: #7d2a22; background: rgba(140,47,37,0.22); }
+.adv-opt.adv-crit { color: #ffe8a0; border-color: #9a7a22; background: rgba(180,140,30,0.25); }
 
 /* Item-use info grid in the item popup */
 .item-use { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
