@@ -57,7 +57,7 @@ GAME_DATA.weaponTemplates = {
   "Fire Axe":           { name: "Fire Axe", category: "melee", damage: "1d8 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", note: "On a max damage die, roll d4: 1–2 Leg Ruined, 3–4 Arm Ruined (Injury table)." },
   "Machete":            { name: "Machete", category: "melee", damage: "1d8 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
   "Improvised Weapon":  { name: "Improvised Weapon", category: "improvised", damage: "1d4 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", note: "Durability Check (d4) on each hit: breaks on 1–3." },
-  "Upgraded Improvised":{ name: "Upgraded Improvised Weapon", category: "improvised", damage: "2d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", upgraded: true, brutal: true, note: "Brutal: automatically crits on enemies below half HP. Durability Check (d4) on each hit: breaks only on a 1." },
+  "Upgraded Improvised":{ name: "Upgraded Improvised Weapon", category: "improvised", damage: "2d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", upgraded: true, brutal: true, note: "Brutal: automatically crits enemies below half HP. Durability Check (d4) on each hit: breaks only on a 1." },
 };
 const WEAPON_TYPE_LABEL = { rifle: "Rifle", shotgun: "Shotgun", handgun: "Handgun", bow: "Bow", blunt: "Blunt Melee", improvised: "Improvised Melee", melee: "Melee", thrown: "Thrown" };
 
@@ -808,9 +808,9 @@ function weaponToHitMod(w) {
   if (w.virtual && w.quality) m += qualityToHit(w.quality); // crafted-item quality bonus
   return m;
 }
-/* Brutal: improvised weapons instantly kill enemies already below half HP. */
+/* Brutal: only upgraded improvised weapons automatically crit enemies below half HP. */
 function weaponBrutal(w) {
-  return w.brutal === true || (w.brutal !== false && w.category === "improvised" && w.upgraded);
+  return w.brutal === true;
 }
 
 /* Is a skill-tree tier unlocked? (tier is 1-based) */
@@ -1675,7 +1675,7 @@ function weaponCardHtml(w) {
   const soundCls = "sound " + effectiveSound.toLowerCase().replace(/\s+/g, "");
   const verb = fireVerb(w);
   const brutalTag = weaponBrutal(w)
-    ? `<span class="brutal-tag" title="Instantly kills an enemy already below half HP">Brutal</span>` : "";
+    ? `<span class="brutal-tag" title="Automatically crits enemies below half HP">Brutal</span>` : "";
 
   // ---- Virtual weapons (Fists / Shiv / Molotov): simplified card ----
   if (w.virtual) {
