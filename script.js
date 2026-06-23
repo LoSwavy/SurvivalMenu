@@ -869,9 +869,11 @@ function virtualWeapons() {
   }
   if (totalCraftedQty("molotov") > 0) {
     const q = nextConsumableQuality("molotov");
+    const strMod = (typeof D !== "undefined" && D.mods) ? D.mods.str : 0;
+    const throwRange = Math.max(35, 40 + 5 * strMod); // 40 + 5×STR mod, floored at 35 ft
     out.push({
       id: "v-molotov", virtual: true, consumes: "molotov", quality: q, thrown: true, name: "Molotov",
-      category: "thrown", ability: "dex", damage: "1d10", range: "Thrown 40 + 5×STR ft", sound: "Very Loud",
+      category: "thrown", ability: "dex", damage: "1d10", range: `Thrown ${throwRange} ft`, sound: "Very Loud",
       brutal: false, attachments: [],
       notes: `1d10 fire on a hit; creatures within 5 ft make a DC ${15 + qualityToHit(q)} DEX save or catch fire (1d4/turn). Single-use.`,
     });
@@ -1684,7 +1686,9 @@ function weaponCardHtml(w) {
     if (w.consumes) {
       const parts = QUALITY_TIERS.map(q => {
         const n = character.inventory[qualityInvKey(w.consumes, q)] || 0;
-        return n ? `${n} ${q ? qualityLabel(q) : "Std"}` : null;
+        if (!n) return null;
+        const label = qualityLabel(q);            // "" for the standard tier
+        return label ? `${n} ${label}` : `${n}`;  // standard tier shows just the count
       }).filter(Boolean).join(" · ");
       carried = `<div class="ammo-track"><div class="ammo-top"><span class="ammo-label">In bag</span><span class="ammo-count"><span class="cur">${parts}</span></span></div></div>`;
     }
