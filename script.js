@@ -56,8 +56,8 @@ GAME_DATA.weaponTemplates = {
   "Baseball Bat":       { name: "Baseball Bat", category: "blunt", damage: "1d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
   "Fire Axe":           { name: "Fire Axe", category: "melee", damage: "1d8 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", note: "On a max damage die, roll d4: 1–2 Leg Ruined, 3–4 Arm Ruined (Injury table)." },
   "Machete":            { name: "Machete", category: "melee", damage: "1d8 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
-  "Improvised Weapon":  { name: "Improvised Weapon", category: "improvised", damage: "2d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", brutal: true, note: "Brutal: instantly kills an enemy already below half HP. Durability Check (d4) on each hit: breaks on 1–3." },
-  "Upgraded Improvised":{ name: "Upgraded Improvised Weapon", category: "improvised", damage: "2d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", upgraded: true, brutal: true, note: "Brutal: instantly kills an enemy already below half HP. Durability Check (d4) on each hit: breaks only on a 1." },
+  "Improvised Weapon":  { name: "Improvised Weapon", category: "improvised", damage: "1d4 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", note: "Durability Check (d4) on each hit: breaks on 1–3." },
+  "Upgraded Improvised":{ name: "Upgraded Improvised Weapon", category: "improvised", damage: "2d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", upgraded: true, brutal: true, note: "Brutal: automatically crits on enemies below half HP. Durability Check (d4) on each hit: breaks only on a 1." },
 };
 const WEAPON_TYPE_LABEL = { rifle: "Rifle", shotgun: "Shotgun", handgun: "Handgun", bow: "Bow", blunt: "Blunt Melee", improvised: "Improvised Melee", melee: "Melee", thrown: "Thrown" };
 
