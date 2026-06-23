@@ -56,10 +56,10 @@ GAME_DATA.weaponTemplates = {
   "Baseball Bat":       { name: "Baseball Bat", category: "blunt", damage: "1d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
   "Fire Axe":           { name: "Fire Axe", category: "melee", damage: "1d8 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", note: "On a max damage die, roll d4: 1–2 Leg Ruined, 3–4 Arm Ruined (Injury table)." },
   "Machete":            { name: "Machete", category: "melee", damage: "1d8 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium" },
-  "Improvised Weapon":  { name: "Improvised Weapon", category: "improvised", damage: "1d4 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", note: "Durability Check (d4) on each hit: breaks on 1–3." },
-  "Upgraded Improvised":{ name: "Upgraded Improvised Weapon", category: "improvised", damage: "1d10 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", upgraded: true, note: "Durability Check (d4) on each hit: breaks only on a 1." },
+  "Improvised Weapon":  { name: "Improvised Weapon", category: "improvised", damage: "2d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", brutal: true, note: "Brutal: instantly kills an enemy already below half HP. Durability Check (d4) on each hit: breaks on 1–3." },
+  "Upgraded Improvised":{ name: "Upgraded Improvised Weapon", category: "improvised", damage: "2d6 + STR", range: "Melee (5 ft)", ammoType: "", maxAmmo: 0, sound: "Medium", upgraded: true, brutal: true, note: "Brutal: instantly kills an enemy already below half HP. Durability Check (d4) on each hit: breaks only on a 1." },
 };
-const WEAPON_TYPE_LABEL = { rifle: "Rifle", shotgun: "Shotgun", handgun: "Handgun", bow: "Bow", blunt: "Blunt Melee", improvised: "Improvised Melee", melee: "Melee" };
+const WEAPON_TYPE_LABEL = { rifle: "Rifle", shotgun: "Shotgun", handgun: "Handgun", bow: "Bow", blunt: "Blunt Melee", improvised: "Improvised Melee", melee: "Melee", thrown: "Thrown" };
 
 GAME_DATA.backgrounds = {
   brawler: {
@@ -190,7 +190,7 @@ GAME_DATA.survivorPerks = {
     effect: (ch) => `Add Proficiency Bonus to ${ch.replace(" Saves", "")} saving throws.`,
   },
   abilityImprovement: {
-    type: "abilityImprovement", label: "Ability Improvement", repeatable: true, max: 2,
+    type: "abilityImprovement", label: "Ability Improvement", repeatable: true,
     needsChoice: true, choices: ["STR", "DEX", "CON", "INT", "WIS", "CHA"],
     effect: (ch) => `+1 ${ABILITY_NAMES[ch] || ch.toUpperCase()}.`,
   },
@@ -231,12 +231,12 @@ GAME_DATA.skillTrees = {
   marksman: {
     id: "marksman", category: "Combat", name: "Precision Marksman", flavor: "long-range control & punishment",
     tiers: [
-      { name: "Marksman's Focus", cost: T1, desc: "Long guns are +1 weapons. If you make no movement on your turn, gain Advantage on your next long-gun attack.",
-        weapon: { match: (w) => w.category === "rifle", name: "Marksman's Focus (+1)", desc: "+1 weapon. Advantage on your next shot if you didn't move this turn.", toHit: 1, dmg: 1 } },
+      { name: "Marksman's Focus", cost: T1, desc: "Long guns and bows are +1 weapons. If you make no movement on your turn, gain Advantage on your next long-gun or bow attack.",
+        weapon: { match: (w) => w.category === "rifle" || w.category === "bow", name: "Marksman's Focus (+1)", desc: "+1 weapon. Advantage on your next shot if you didn't move this turn.", toHit: 1, dmg: 1 } },
       { name: "Suppressive Fire", cost: T2, desc: "Instead of attacking, spend a shot to Suppress a target you can see (WIS save vs your Maneuver DC). If it moves, react to shoot it with Advantage (crit 18–20).",
         dash: [{ cat: CAT.ACTION, name: "Suppressive Fire", desc: "Spend a shot to Suppress a visible target (WIS save vs Maneuver DC). Moving triggers a reaction shot with Advantage." }] },
-      { name: "Zeroed In", cost: T3, desc: "Your long guns ignore half and three-quarters cover. A Suppressed target you hit takes +10 damage.",
-        weapon: { match: (w) => w.category === "rifle", name: "Zeroed In", desc: "Ignores half/¾ cover. +10 damage vs Suppressed targets." } },
+      { name: "Zeroed In", cost: T3, desc: "Your long guns and bows ignore half and three-quarters cover. A Suppressed target you hit takes +10 damage.",
+        weapon: { match: (w) => w.category === "rifle" || w.category === "bow", name: "Zeroed In", desc: "Ignores half/¾ cover. +10 damage vs Suppressed targets." } },
     ],
   },
   improvised: {
@@ -347,8 +347,8 @@ GAME_DATA.skillTrees = {
   endure: {
     id: "endure", category: "Survival", name: "Endure the World", flavor: "durability, resilience",
     tiers: [
-      { name: "Hardened Survivor", cost: T1, desc: "Gain 5 + CON max HP. Advantage on saves vs environmental effects (cold, gas, heat, etc.).",
-        dash: [{ cat: CAT.PASSIVE, name: "Hardened Survivor", desc: "+ (5 + CON) max HP. Advantage on saves vs environmental hazards." }],
+      { name: "Hardened Survivor", cost: T1, desc: "Gain 5 + CON max HP.",
+        dash: [{ cat: CAT.PASSIVE, name: "Hardened Survivor", desc: "+ (5 + CON) max HP." }],
         stat: (d, c) => { d.maxHp += 5 + c.mods.con; } },
       { name: "Grit", cost: T2, desc: "Once per short rest, when you'd be reduced to 0 HP, drop to 1 HP instead. Immune to Frightened.",
         dash: [{ cat: CAT.REACT, name: "Grit", desc: "1/short rest: drop to 1 HP instead of 0. Immune to Frightened." }] },
@@ -471,6 +471,7 @@ function tmplWeapon(name, category, overrides = {}) {
     currentAmmo: base.maxAmmo || 0,
     sound: base.sound || "Medium",
     upgraded: !!base.upgraded,        // upgraded improvised weapon (breaks only on 1)
+    brutal: !!base.brutal,            // instantly kills enemies already below half HP
     attachments: [],                  // [{key?, name, desc, toHit, sound, custom}]
     notes: base.note || "",
   };
@@ -717,6 +718,7 @@ function buildDashboard(sources, d) {
   push(CAT.ACTION, "Dash", "Double your movement speed this turn.", "Core");
   push(CAT.ACTION, "Disengage", "Move without provoking opportunity attacks.", "Core");
   push(CAT.ACTION, "Hide", "Make a Stealth check to become Hidden (needs cover/concealment).", "Core");
+  push(CAT.ACTION, "Dodge", "Focus on dodging. Attacks against you have Disadvantage until your next turn. Advantage on DEX saves.", "Core");
   push(CAT.REACT, "Opportunity Attack", "Melee attack a creature that leaves your reach.", "Core");
 
   // ---- Crafting action (action by default, bonus with Fast Hands) ----
@@ -797,10 +799,17 @@ function weaponProficient(w) {
 }
 /* Ability used for a weapon's attack roll */
 function weaponAbility(w) {
+  if (w.ability) return w.ability;
   return (w.category === "blunt" || w.category === "improvised" || w.category === "melee") ? "str" : "dex";
 }
 function weaponToHitMod(w) {
-  return D.mods[weaponAbility(w)] + (weaponProficient(w) ? D.pb : 0) + weaponFlatBonuses(w).toHit;
+  let m = D.mods[weaponAbility(w)] + (weaponProficient(w) ? D.pb : 0) + weaponFlatBonuses(w).toHit;
+  if (w.virtual && w.quality) m += qualityToHit(w.quality); // crafted-item quality bonus
+  return m;
+}
+/* Brutal: improvised weapons instantly kill enemies already below half HP. */
+function weaponBrutal(w) {
+  return w.brutal === true || (w.brutal !== false && w.category === "improvised");
 }
 
 /* Is a skill-tree tier unlocked? (tier is 1-based) */
@@ -828,6 +837,49 @@ function totalCraftedQty(baseId) {
 }
 function isCraftable(item) { return !!item.craft || item.id === "medkit"; }
 function canImproveQuality(item) { return !!item.craft; }
+
+/* Lowest-tier quality currently in the bag for a crafted item (used first). */
+function nextConsumableQuality(baseId) {
+  for (const q of QUALITY_TIERS) {
+    if ((character.inventory[qualityInvKey(baseId, q)] || 0) > 0) return q;
+  }
+  return null;
+}
+
+/* Default & inventory-derived weapons that aren't stored in character.weapons:
+   - Fists: always available.
+   - Shiv / Molotov: shown once each while you carry at least one. */
+function virtualWeapons() {
+  const out = [];
+  const fistDmg = isUnlocked("improvised", 1) ? "1d6 + STR" : "1 + STR";
+  out.push({
+    id: "v-fists", virtual: true, name: "Fists", category: "improvised", ability: "str",
+    damage: fistDmg, range: "Melee (5 ft)", sound: "Medium", brutal: false, attachments: [],
+    notes: "Unarmed strike. Counts as an Improvised weapon for proficiency.",
+  });
+  if (totalCraftedQty("shiv") > 0) {
+    const q = nextConsumableQuality("shiv");
+    out.push({
+      id: "v-shiv", virtual: true, consumes: "shiv", quality: q, name: "Shiv",
+      category: "melee", ability: "dex", damage: "1d8", range: "Melee (5 ft)", sound: "Quiet",
+      brutal: false, attachments: [],
+      notes: "Quiet. Instant kill vs an Unaware target with max HP ≤ 30 (no roll); tougher targets just take 1d8. Breaks after use unless Hardened/Masterwork.",
+    });
+  }
+  if (totalCraftedQty("molotov") > 0) {
+    const q = nextConsumableQuality("molotov");
+    out.push({
+      id: "v-molotov", virtual: true, consumes: "molotov", quality: q, thrown: true, name: "Molotov",
+      category: "thrown", ability: "dex", damage: "1d10", range: "Thrown 40 + 5×STR ft", sound: "Very Loud",
+      brutal: false, attachments: [],
+      notes: `1d10 fire on a hit; creatures within 5 ft make a DC ${15 + qualityToHit(q)} DEX save or catch fire (1d4/turn). Single-use.`,
+    });
+  }
+  return out;
+}
+function findAnyWeapon(id) {
+  return character.weapons.find(x => x.id === id) || virtualWeapons().find(x => x.id === id) || null;
+}
 
 /* Resolve a weapon's attachment list into full objects (base catalog + custom). */
 function weaponAttachments(w) {
@@ -891,6 +943,7 @@ function weaponDamageFormula(w) {
 
 /* Durability rules for weapons that have them (rulebook p.22). */
 function weaponDurability(w) {
+  if (w.virtual) return null; // fists/shiv/molotov don't use a weapon durability check
   if (w.category === "improvised") {
     const tough = w.upgraded || /upgrad/i.test(w.name || "") || isUnlocked("improvised", 1); // Upgraded, or a Scrap Brawler
     return { die: 4, breakAt: tough ? 1 : 3,
@@ -1599,24 +1652,59 @@ function renderStatuses() {
 }
 
 /* ---- Weapons ---- */
-function renderWeapons() {
-  const grid = document.getElementById("weapons-grid");
-  if (!character.weapons.length) {
-    grid.innerHTML = `<div class="empty-state">No weapons yet. Tap “+ Add Weapon” to arm up.</div>`;
-    return;
-  }
-  grid.innerHTML = character.weapons.map(w => {
-    const bonuses = weaponBonuses(w);
-    const flat = weaponFlatBonuses(w);
-    const hasAmmo = w.maxAmmo > 0 || (w.ammoType && w.ammoType.trim());
-    const isMelee = ["blunt", "melee", "improvised"].includes(w.category);
-    const effectiveSound = weaponEffectiveSound(w);
-    const soundCls = "sound " + effectiveSound.toLowerCase().replace(/\s+/g, "");
-    const atts = weaponAttachments(w);
-    const dur = weaponDurability(w);
-    return `<div class="weapon-card cat-${w.category}">
+function fireVerb(w) {
+  const isMelee = ["blunt", "melee", "improvised"].includes(w.category);
+  if (w.thrown || w.category === "thrown") return { word: "THROW", cls: "throw" };
+  if (isMelee) return { word: "STRIKE", cls: "strike" };
+  return { word: "SHOOT", cls: "shoot" };
+}
+
+function weaponCardHtml(w) {
+  const flat = weaponFlatBonuses(w);
+  const effectiveSound = weaponEffectiveSound(w);
+  const soundCls = "sound " + effectiveSound.toLowerCase().replace(/\s+/g, "");
+  const verb = fireVerb(w);
+  const brutalTag = weaponBrutal(w)
+    ? `<span class="brutal-tag" title="Instantly kills an enemy already below half HP">Brutal</span>` : "";
+
+  // ---- Virtual weapons (Fists / Shiv / Molotov): simplified card ----
+  if (w.virtual) {
+    const qBadge = w.quality ? `<span class="quality-badge ${w.quality}">${qualityLabel(w.quality)}</span>` : "";
+    let carried = "";
+    if (w.consumes) {
+      const parts = QUALITY_TIERS.map(q => {
+        const n = character.inventory[qualityInvKey(w.consumes, q)] || 0;
+        return n ? `${n} ${q ? qualityLabel(q) : "Std"}` : null;
+      }).filter(Boolean).join(" · ");
+      carried = `<div class="ammo-track"><div class="ammo-top"><span class="ammo-label">In bag</span><span class="ammo-count"><span class="cur">${parts}</span></span></div></div>`;
+    }
+    return `<div class="weapon-card cat-${w.category} virtual">
       <div class="weapon-head">
-        <div><div class="weapon-name">${esc(w.name || "Unnamed")}</div>
+        <div><div class="weapon-name">${esc(w.name)} ${qBadge}${brutalTag}</div>
+          <div class="weapon-type">${WEAPON_TYPE_LABEL[w.category] || w.category} · ${w.consumes ? "from bag" : "default"}</div></div>
+      </div>
+      <div class="weapon-stats">
+        <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val rollable" data-roll-damage="${w.id}" title="Click to roll">${esc(weaponDamageFormula(w) || "—")}</div></div>
+        <div class="wstat"><div class="ws-lbl">Range</div><div class="ws-val">${esc(w.range || "—")}</div></div>
+        <div class="wstat ${soundCls}"><div class="ws-lbl">Sound</div><div class="ws-val">${esc(effectiveSound || "—")}</div></div>
+        <div class="wstat"><div class="ws-lbl">Attack</div><div class="ws-val">${fmtMod(weaponToHitMod(w))}</div></div>
+      </div>
+      ${carried}
+      <div class="fire-row">
+        <button class="fire-btn ${verb.cls}" data-shoot="${w.id}" title="Roll attack (right-click / long-press for advantage)">${icon("attack")} ${verb.word} ${fmtMod(weaponToHitMod(w))}</button>
+      </div>
+      ${w.notes ? `<div class="weapon-notes">${esc(w.notes)}</div>` : ""}
+    </div>`;
+  }
+
+  // ---- Stored weapons ----
+  const bonuses = weaponBonuses(w);
+  const hasAmmo = w.maxAmmo > 0 || (w.ammoType && w.ammoType.trim());
+  const atts = weaponAttachments(w);
+  const dur = weaponDurability(w);
+  return `<div class="weapon-card cat-${w.category}">
+      <div class="weapon-head">
+        <div><div class="weapon-name">${esc(w.name || "Unnamed")} ${brutalTag}</div>
           <div class="weapon-type">${WEAPON_TYPE_LABEL[w.category] || w.category}</div></div>
         <div class="weapon-actions">
           <button class="icon-btn" data-edit-weapon="${w.id}" title="Edit">✎</button>
@@ -1647,7 +1735,7 @@ function renderWeapons() {
       </div>` : ""}
 
       <div class="fire-row">
-        <button class="fire-btn ${isMelee ? "strike" : "shoot"}" data-shoot="${w.id}" title="Roll attack (right-click / long-press for advantage)">${icon("attack")} ${isMelee ? "STRIKE" : "SHOOT"} ${fmtMod(weaponToHitMod(w))}</button>
+        <button class="fire-btn ${verb.cls}" data-shoot="${w.id}" title="Roll attack (right-click / long-press for advantage)">${icon("attack")} ${verb.word} ${fmtMod(weaponToHitMod(w))}</button>
         ${hasAmmo && w.category !== "bow" ? `<button class="fire-btn reload" data-ammo="${w.id}:reload">RELOAD</button>` : ""}
       </div>
 
@@ -1676,7 +1764,12 @@ function renderWeapons() {
 
       ${w.notes ? `<div class="weapon-notes">${esc(w.notes)}</div>` : ""}
     </div>`;
-  }).join("");
+}
+
+function renderWeapons() {
+  const grid = document.getElementById("weapons-grid");
+  const all = character.weapons.concat(virtualWeapons());
+  grid.innerHTML = all.map(weaponCardHtml).join("");
 }
 
 /* ---- Backpack ---- */
@@ -2332,13 +2425,13 @@ document.getElementById("weapons-grid").addEventListener("click", e => {
   if (shootBtn) { fireWeapon(shootBtn.dataset.shoot, 0); return; }
   const atkBtn = e.target.closest("[data-roll-attack]");
   if (atkBtn) {
-    const w = character.weapons.find(x => x.id === atkBtn.dataset.rollAttack);
+    const w = findAnyWeapon(atkBtn.dataset.rollAttack);
     if (w) rollD20(weaponToHitMod(w), `${w.name || "Weapon"} — Attack`);
     return;
   }
   const dmgBtn = e.target.closest("[data-roll-damage]");
   if (dmgBtn) {
-    const w = character.weapons.find(x => x.id === dmgBtn.dataset.rollDamage);
+    const w = findAnyWeapon(dmgBtn.dataset.rollDamage);
     if (w) rollDamage(weaponDamageFormula(w), `${w.name || "Weapon"} — Damage`);
     return;
   }
@@ -2789,8 +2882,25 @@ function openAttachmentModal(weaponId) {
 /* Shoot: roll the attack (optional advantage/disadvantage) and spend 1 ammo
    if the weapon uses ammo, applying the Makeshift Suppressor d6 rule. */
 function fireWeapon(weaponId, adv = 0) {
-  const w = character.weapons.find(x => x.id === weaponId);
+  const w = findAnyWeapon(weaponId);
   if (!w) return;
+
+  if (w.virtual && w.consumes) {
+    const q = nextConsumableQuality(w.consumes);
+    if (!q && q !== "") { toast(`No ${w.consumes} in your bag.`); return; }
+    const key = qualityInvKey(w.consumes, q);
+    if ((character.inventory[key] || 0) <= 0) { toast(`No ${w.consumes} in your bag.`); return; }
+    rollD20(weaponToHitMod(w), `${w.name || "Weapon"} — Attack`, adv);
+    character.inventory[key] -= 1;
+    if (character.inventory[key] <= 0) delete character.inventory[key];
+    save(); renderAll();
+    return;
+  }
+  if (w.virtual) {
+    rollD20(weaponToHitMod(w), `${w.name || "Weapon"} — Attack`, adv);
+    return;
+  }
+
   const isBow = w.category === "bow";
   if (isBow) {
     if ((character.inventory.arrows || 0) <= 0) { toast("No arrows left."); return; }
