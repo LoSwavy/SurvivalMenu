@@ -387,9 +387,6 @@ GAME_DATA.inventory = [
     { id: "silencer", name: "Makeshift Suppressor", icon: "inv-silencer", recipe: "Rag + Bottle", craft: { rag: 1, bottle: 1 },
       use: { Type: "Handgun attachment", Use: "Bonus action to attach", Special: "Shots become Quiet; each shot roll d6 — spent on a 1 (~6 quiet shots)" },
       desc: "Handgun attachment. Its shots become Quiet. Improvised and fragile: each shot, roll a d6 — on a 1 it's spent (that shot still fires Quiet; the gun is Very Loud afterward). About six quiet shots on average. Crafting consumes 1 Rag + 1 Bottle." },
-    { id: "craftArrows", name: "Arrows (×2)", icon: "inv-arrows", recipe: "Scrap + Binding", craft: { scrap: 1, binding: 1 }, craftQty: 2, noQuality: true, requiresBow: true, craftTarget: "arrows",
-      use: { Type: "Ammunition", Qty: "Crafts 2 arrows" },
-      desc: "Craft 2 arrows for bows. Requires a bow in your arsenal. Crafting consumes 1 Scrap + 1 Binding." },
     { id: "upgradedWeapon", name: "Upgraded Improv. Weapon", icon: "inv-upgradedWeapon", recipe: "2× Scrap + Binding + Improv. Weapon", craft: { scrap: 2, binding: 1 }, requiresImprovised: true,
       use: { Damage: "2d6 + STR", Range: "Melee (5 ft)", Durability: "Durability Check (d4): breaks only on a 1", Special: "Brutal — automatically crits enemies below half HP" },
       desc: "An improvised weapon reinforced with scrap. Replaces the improvised weapon. Crafting consumes 2 Scrap + 1 Binding + an improvised weapon from your arsenal." },
@@ -398,9 +395,16 @@ GAME_DATA.inventory = [
       desc: "Heals 2d6 + CON when used. Cannot be crafted — found only." },
   ]},
 ];
+/* Arrow crafting — separate from crafted items, shown only when you have a bow. */
+GAME_DATA.arrowRecipe = {
+  id: "craftArrows", name: "Arrows (×2)", icon: "inv-arrows", recipe: "Scrap + Binding",
+  craft: { scrap: 1, binding: 1 }, craftQty: 2, noQuality: true, craftTarget: "arrows",
+};
+
 /* flat lookup */
 GAME_DATA.invById = {};
 GAME_DATA.inventory.forEach(g => g.items.forEach(i => { GAME_DATA.invById[i.id] = i; }));
+GAME_DATA.invById[GAME_DATA.arrowRecipe.id] = GAME_DATA.arrowRecipe;
 
 /* --- Weapon attachments (rulebook p.23) ----------------------------------
    Each: key, name, desc, fits(category) compatibility, and optional
@@ -745,11 +749,11 @@ function buildDashboard(sources, d) {
       const n = inv[k] || 0;
       if (!n) return null;
       const bonus = qualityToHit(q);
-      return `${n} ${q ? qualityLabel(q) : "Standard"} (1d4+CON${bonus ? `+${bonus}` : ""})`;
+      return `${n} ${q ? qualityLabel(q) : "Standard"} (${formulaDisplay(`1d4 + CON${bonus ? ` + ${bonus}` : ""}`)})`;
     }).filter(Boolean).join(", ");
     push(healCat, "Use Bandage", `Heal with a bandage. ${parts}.`, "Backpack");
   }
-  if (medkitTotal > 0) push(healCat, "Use Medkit", `Heal 2d6 + CON per use. (${medkitTotal} carried)`, "Backpack");
+  if (medkitTotal > 0) push(healCat, "Use Medkit", `Heal ${formulaDisplay("2d6 + CON")} per use. (${medkitTotal} carried)`, "Backpack");
   if (molotovTotal > 0) push(CAT.ACTION, "Throw Molotov", `1d10 fire; DC 15 DEX save vs catching fire. (${molotovTotal} carried)`, "Backpack");
   if (shivTotal > 0) {
     const parts = QUALITY_TIERS.map(q => {
@@ -842,14 +846,6 @@ function totalCraftedQty(baseId) {
 function isCraftable(item) { return !!item.craft || item.id === "medkit"; }
 function canImproveQuality(item) { return !!item.craft; }
 
-/* Lowest-tier quality currently in the bag for a crafted item (used first). */
-function nextConsumableQuality(baseId) {
-  for (const q of QUALITY_TIERS) {
-    if ((character.inventory[qualityInvKey(baseId, q)] || 0) > 0) return q;
-  }
-  return null;
-}
-
 /* Default & inventory-derived weapons that aren't stored in character.weapons:
    - Fists: always available.
    - Shiv / Molotov: shown once each while you carry at least one. */
@@ -861,24 +857,29 @@ function virtualWeapons() {
     damage: fistDmg, range: "Melee (5 ft)", sound: "Medium", brutal: false, attachments: [],
     notes: "Unarmed strike. Counts as an Improvised weapon for proficiency.",
   });
-  if (totalCraftedQty("shiv") > 0) {
-    const q = nextConsumableQuality("shiv");
+  // One card per quality tier of Shiv you carry (Standard / Hardened / Masterwork).
+  QUALITY_TIERS.forEach(q => {
+    if ((character.inventory[qualityInvKey("shiv", q)] || 0) <= 0) return;
+    const ql = q ? qualityLabel(q) + " " : "";
     out.push({
-      id: "v-shiv", virtual: true, consumes: "shiv", quality: q, name: "Shiv",
+      id: q ? `v-shiv-${q}` : "v-shiv", virtual: true, consumes: "shiv", quality: q, name: `${ql}Shiv`,
       category: "melee", ability: "dex", damage: "1d8", range: "Melee (5 ft)", sound: "Quiet",
       brutal: false, attachments: [],
-      notes: "Quiet. Instant kill vs an Unaware target with max HP ≤ 30 (no roll); tougher targets just take 1d8. Breaks after use unless Hardened/Masterwork.",
+      notes: "Quiet. Instant kill vs an Unaware target with max HP ≤ 30 (no roll); tougher targets just take 1d8.",
     });
-  }
-  if (totalCraftedQty("molotov") > 0) {
-    const q = nextConsumableQuality("molotov");
+  });
+  // One card per quality tier of Molotov you carry.
+  const molotovRange = Math.max(35, 40 + 5 * D.mods.str);
+  QUALITY_TIERS.forEach(q => {
+    if ((character.inventory[qualityInvKey("molotov", q)] || 0) <= 0) return;
+    const ql = q ? qualityLabel(q) + " " : "";
     out.push({
-      id: "v-molotov", virtual: true, consumes: "molotov", quality: q, thrown: true, name: "Molotov",
-      category: "thrown", ability: "dex", damage: "1d10", range: "Thrown 40 + 5×STR ft", sound: "Very Loud",
+      id: q ? `v-molotov-${q}` : "v-molotov", virtual: true, consumes: "molotov", quality: q, thrown: true, name: `${ql}Molotov`,
+      category: "thrown", ability: "dex", damage: "1d10", range: `Thrown ${molotovRange} ft`, sound: "Very Loud",
       brutal: false, attachments: [],
-      notes: `1d10 fire on a hit; creatures within 5 ft make a DC ${15 + qualityToHit(q)} DEX save or catch fire (1d4/turn). Single-use.`,
+      notes: `1d10 fire on a hit; creatures within 5 ft make a DC ${15 + qualityToHit(q)} DEX save or catch fire (1d4/turn).`,
     });
-  }
+  });
   return out;
 }
 function findAnyWeapon(id) {
@@ -938,11 +939,42 @@ function flatNote(name, toHit, dmg) {
 }
 
 /* Damage formula including always-on flat damage bonuses (single source of
-   truth for both the displayed value and the roll). */
+   truth for the roll). */
 function weaponDamageFormula(w) {
   const dmg = weaponFlatBonuses(w).dmg;
   const base = w.damage || "";
   return dmg ? `${base} + ${dmg}` : base;
+}
+
+/* Human-readable formula: ability abbreviations (STR/DEX/...) resolved to the
+   character's actual modifier, and all flat constants combined into one. Dice
+   are kept; a formula with no dice collapses to a single number
+   (e.g. fists "1 + STR" → "4", "2d6 + STR" → "2d6 + 3"). Display only. */
+function formulaDisplay(formula) {
+  if (!formula) return "—";
+  const tokens = parseFormula(formula); // abilities already replaced with numbers
+  const diceParts = [];
+  let constant = 0, sign = 1;
+  for (const t of tokens) {
+    if (t.type === "op") {
+      if (t.value === "+") sign = 1;
+      else if (t.value === "-") sign = -1;
+    } else if (t.type === "dice") {
+      diceParts.push((sign < 0 ? "-" : "") + (t.raw || "").toLowerCase());
+      sign = 1;
+    } else if (t.type === "num") {
+      constant += sign * t.value;
+      sign = 1;
+    }
+  }
+  if (!diceParts.length) return String(constant); // no dice → single number
+  let out = diceParts.join(" + ").replace(/\+ -/g, "- ");
+  if (constant > 0) out += " + " + constant;
+  else if (constant < 0) out += " - " + Math.abs(constant);
+  return out;
+}
+function weaponDamageDisplay(w) {
+  return formulaDisplay(weaponDamageFormula(w));
 }
 
 /* Durability rules for weapons that have them (rulebook p.22). */
@@ -1685,11 +1717,8 @@ function weaponCardHtml(w) {
     const qBadge = w.quality ? `<span class="quality-badge ${w.quality}">${qualityLabel(w.quality)}</span>` : "";
     let carried = "";
     if (w.consumes) {
-      const parts = QUALITY_TIERS.map(q => {
-        const n = character.inventory[qualityInvKey(w.consumes, q)] || 0;
-        return n ? `${n} ${q ? qualityLabel(q) : "Std"}` : null;
-      }).filter(Boolean).join(" · ");
-      carried = `<div class="ammo-track"><div class="ammo-top"><span class="ammo-label">In bag</span><span class="ammo-count"><span class="cur">${parts}</span></span></div></div>`;
+      const n = character.inventory[qualityInvKey(w.consumes, w.quality)] || 0;
+      carried = `<div class="ammo-track"><div class="ammo-top"><span class="ammo-label">In bag</span><span class="ammo-count"><span class="cur">${n}</span></span></div></div>`;
     }
     return `<div class="weapon-card cat-${w.category} virtual">
       <div class="weapon-head">
@@ -1697,7 +1726,7 @@ function weaponCardHtml(w) {
           <div class="weapon-type">${WEAPON_TYPE_LABEL[w.category] || w.category} · ${w.consumes ? "from bag" : "default"}</div></div>
       </div>
       <div class="weapon-stats">
-        <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val rollable" data-roll-damage="${w.id}" title="Click to roll">${esc(weaponDamageFormula(w) || "—")}</div></div>
+        <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val rollable" data-roll-damage="${w.id}" title="Click to roll">${esc(weaponDamageDisplay(w))}</div></div>
         <div class="wstat"><div class="ws-lbl">Range</div><div class="ws-val">${esc(w.range || "—")}</div></div>
         <div class="wstat ${soundCls}"><div class="ws-lbl">Sound</div><div class="ws-val">${esc(effectiveSound || "—")}</div></div>
         <div class="wstat"><div class="ws-lbl">Attack</div><div class="ws-val">${fmtMod(weaponToHitMod(w))}</div></div>
@@ -1726,7 +1755,7 @@ function weaponCardHtml(w) {
       </div>
 
       <div class="weapon-stats">
-        <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val rollable" data-roll-damage="${w.id}" title="Click to roll">${esc(weaponDamageFormula(w) || "—")}</div></div>
+        <div class="wstat"><div class="ws-lbl">Damage</div><div class="ws-val rollable" data-roll-damage="${w.id}" title="Click to roll">${esc(weaponDamageDisplay(w))}</div></div>
         <div class="wstat"><div class="ws-lbl">Range</div><div class="ws-val">${esc(w.range || "—")}</div></div>
         <div class="wstat ${soundCls}"><div class="ws-lbl">Sound</div><div class="ws-val">${esc(effectiveSound || "—")}</div></div>
         <div class="wstat"><div class="ws-lbl">Ammo Type</div><div class="ws-val">${esc(w.ammoType || "—")}</div></div>
@@ -1998,12 +2027,12 @@ function groupIcon(name) {
 const craftQuality = {};
 function renderCrafting() {
   const root = document.getElementById("crafting");
-  const craftables = GAME_DATA.invById ? GAME_DATA.inventory.flatMap(g => g.items).filter(it => it.craft) : [];
+  const craftables = GAME_DATA.inventory.flatMap(g => g.items).filter(it => it.craft);
+  if (character.weapons.some(w => w.category === "bow")) craftables.push(GAME_DATA.arrowRecipe);
   root.innerHTML = craftables.map(it => {
     const have = (id, n) => (character.inventory[id] || 0) >= n;
     let canCraft = Object.entries(it.craft).every(([id, n]) => have(id, n));
-    if (it.requiresBow && !character.weapons.some(w => w.category === "bow")) canCraft = false;
-    if (it.requiresImprovised && !character.weapons.some(w => w.category === "improvised")) canCraft = false;
+    if (it.requiresImprovised && !character.weapons.some(w => w.category === "improvised" && !w.upgraded)) canCraft = false;
     let qualitySelect = "";
     const tiers = (canImproveQuality(it) && !it.noQuality) ? QUALITY_TIERS.filter(q => canMakeQuality(q)) : [""];
     if (tiers.length > 1) {
@@ -2681,7 +2710,6 @@ document.getElementById("crafting").addEventListener("click", e => {
   const item = GAME_DATA.invById[id];
   const have = Object.entries(item.craft).every(([mid, n]) => (character.inventory[mid] || 0) >= n);
   if (!have) return;
-  if (item.requiresBow && !character.weapons.some(w => w.category === "bow")) { toast("You need a bow in your arsenal to craft arrows."); return; }
   if (item.requiresImprovised) {
     const improv = character.weapons.find(w => w.category === "improvised" && !w.upgraded);
     if (!improv) { toast("You need an improvised weapon in your arsenal to upgrade."); return; }
@@ -2956,17 +2984,9 @@ function fireWeapon(weaponId, adv = 0) {
   const w = findAnyWeapon(weaponId);
   if (!w) return;
 
-  if (w.virtual && w.consumes) {
-    const q = nextConsumableQuality(w.consumes);
-    if (!q && q !== "") { toast(`No ${w.consumes} in your bag.`); return; }
-    const key = qualityInvKey(w.consumes, q);
-    if ((character.inventory[key] || 0) <= 0) { toast(`No ${w.consumes} in your bag.`); return; }
-    rollD20(weaponToHitMod(w), `${w.name || "Weapon"} — Attack`, adv);
-    character.inventory[key] -= 1;
-    if (character.inventory[key] <= 0) delete character.inventory[key];
-    save(); renderAll();
-    return;
-  }
+  // Virtual weapons (fists / shivs / molotovs) just roll — throwing/using does
+  // not auto-consume from the bag, so the card stays put. Adjust counts manually
+  // in the backpack.
   if (w.virtual) {
     rollD20(weaponToHitMod(w), `${w.name || "Weapon"} — Attack`, adv);
     return;
