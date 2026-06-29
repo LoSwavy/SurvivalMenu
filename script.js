@@ -2130,7 +2130,7 @@ function stackMax(it, stack3) {
 }
 
 function groupIcon(name) {
-  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : name.includes("Custom") ? "invcustom" : "inv-medkit");
+  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : name.includes("Custom") ? "invcustom" : "invcustom");
 }
 
 /* ---- Crafting ---- */
