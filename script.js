@@ -1397,7 +1397,12 @@ function rollD20(modifier, label, adv = 0) {
 /* ============================================================
    5. RENDER
    ============================================================ */
-let D = derive();  // cached derived snapshot, refreshed in renderAll()
+/* Seed a minimal placeholder first so anything derive() touches during its own
+   first run (e.g. formulaDisplay → parseFormula reading D.mods to build the
+   dashboard for a saved character that already carries bandages/medkits) sees a
+   valid object instead of the still-uninitialized binding. */
+let D = { mods: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }, pb: 0, flags: {} };
+D = derive();  // cached derived snapshot, refreshed in renderAll()
 
 function renderAll() {
   D = derive();
@@ -2125,7 +2130,7 @@ function stackMax(it, stack3) {
 }
 
 function groupIcon(name) {
-  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : name.includes("Custom") ? "invcustom" : "invcustom");
+  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : name.includes("Custom") ? "invcustom" : "inv-medkit");
 }
 
 /* ---- Crafting ---- */
