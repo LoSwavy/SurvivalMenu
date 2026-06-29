@@ -977,15 +977,50 @@ function weaponDamageDisplay(w) {
   return formulaDisplay(weaponDamageFormula(w));
 }
 
-/* Durability rules for weapons that have them (rulebook p.22). */
+/* Durability: only things that can physically break and aren't simply spent —
+   i.e. the Upgraded Improvised Weapon and Shivs. The check is the SAME for every
+   quality (d4, breaks on 1–2). Quality doesn't change the roll — it just lets the
+   item shrug off breaks: Hardened resists one break, Masterwork resists two. */
+function durabilityResistMax(q) { return q === "masterwork" ? 2 : q === "hardened" ? 1 : 0; }
 function weaponDurability(w) {
-  if (w.virtual) return null; // fists/shiv/molotov don't use a weapon durability check
-  if (w.category === "improvised") {
-    const tough = w.upgraded || /upgrad/i.test(w.name || "") || isUnlocked("improvised", 1); // Upgraded, or a Scrap Brawler
-    return { die: 4, breakAt: tough ? 1 : 3,
-      label: tough ? "breaks only on a 1" : "breaks on 1–3" };
+  const resist = (q) => {
+    const resistMax = durabilityResistMax(q);
+    return { resistMax, resistLeft: Math.max(0, resistMax - durabilityResistUsed(w)) };
+  };
+  // Shivs: no roll — a shiv simply breaks when used. Quality just resists breaks.
+  if (w.virtual && w.consumes === "shiv") {
+    const q = w.quality || "";
+    const r = resist(q);
+    return { breakOnUse: true, quality: q, ...r,
+      label: "breaks on use" + (r.resistMax ? ` · resists ×${r.resistLeft}` : "") };
   }
-  return null;
+  // Improvised melee: roll a d4 durability check.
+  if (!w.virtual && w.category === "improvised") {
+    const q = w.upgraded ? (w.quality || "") : "";  // only the upgrade carries a quality
+    const breakAt = w.upgraded ? 1 : 3;             // upgraded melee: old rule, breaks on a 1; base: 1–3
+    const r = resist(q);
+    const breakTxt = breakAt === 1 ? "breaks on a 1" : `breaks on 1–${breakAt}`;
+    return { die: 4, breakAt, quality: q, ...r,
+      label: breakTxt + (r.resistMax ? ` · resists ×${r.resistLeft}` : "") };
+  }
+  return null;                                       // fists, molotovs, guns — never break
+}
+/* How many "resist" charges this item has already spent. Stored weapons track it
+   on the object; shiv stacks track it per quality on the character. */
+function durabilityResistUsed(w) {
+  if (w.virtual && w.consumes === "shiv") {
+    if (!character.shivResist) character.shivResist = {};
+    return character.shivResist[qualityInvKey("shiv", w.quality)] || 0;
+  }
+  return w.resistUsed || 0;
+}
+function setDurabilityResistUsed(w, n) {
+  if (w.virtual && w.consumes === "shiv") {
+    if (!character.shivResist) character.shivResist = {};
+    character.shivResist[qualityInvKey("shiv", w.quality)] = n;
+  } else {
+    w.resistUsed = n;
+  }
 }
 
 /* Ammo type -> backpack inventory id */
@@ -1735,6 +1770,10 @@ function weaponCardHtml(w) {
       <div class="fire-row">
         <button class="fire-btn ${verb.cls}" data-shoot="${w.id}" title="Roll attack (right-click / long-press for advantage)">${icon("attack")} ${verb.word} ${fmtMod(weaponToHitMod(w))}</button>
       </div>
+      ${(() => { const vd = weaponDurability(w); return vd ? `
+        <div class="durability-row">
+          <span class="dura-note">${icon("attack")} ${vd.label}</span>
+        </div>` : ""; })()}
       ${w.notes ? `<div class="weapon-notes">${esc(w.notes)}</div>` : ""}
     </div>`;
   }
@@ -1902,7 +1941,64 @@ function hasFreeBackpackSlot() {
   return usedBackpackSlots() < backpackCap();
 }
 
+/* Keep weapon placement consistent: every real weapon is EITHER seated in a
+   matching slot/holster OR represented as a "loose in pack" custom item. New or
+   unplaced weapons auto-seat into an empty matching slot; with no free slot they
+   fall into the backpack as a custom item. (Emptying a slot or seating a weapon
+   is handled in the equip-slots handler, which marks the weapon loose/seated
+   before this runs.) */
+function syncWeaponHolsters() {
+  ensureEquipArrays();
+  if (!Array.isArray(character.customItems)) character.customItems = [];
+  const realIds = new Set(character.weapons.map(w => w.id));
+
+  // Drop dangling references to weapons that no longer exist.
+  character.weaponSlots = character.weaponSlots.map(id => realIds.has(id) ? id : null);
+  character.holsters = character.holsters.map(id => realIds.has(id) ? id : null);
+  character.customItems = character.customItems.filter(ci => !ci.fromWeapon || realIds.has(ci.fromWeapon));
+
+  character.weapons.forEach(w => {
+    const inSlot = weaponSeated(w.id);
+    const loose = character.customItems.find(ci => ci.fromWeapon === w.id);
+    if (inSlot) {
+      if (loose) removeLooseWeapon(w.id); // never both
+      return;
+    }
+    if (loose) { loose.name = w.name || "Weapon"; return; } // keep label fresh
+    // Unplaced weapon: seat it if a matching slot is free, else stash it loose.
+    if (!seatWeapon(w)) makeWeaponLoose(w.id);
+  });
+}
+function weaponSeated(id) {
+  return character.weaponSlots.includes(id) || character.holsters.includes(id);
+}
+function seatWeapon(w) {
+  const isHandgun = HOLSTER_CATS.includes(w.category);
+  const cats = isHandgun ? HOLSTER_CATS : WEAPON_SLOT_CATS;
+  if (!cats.includes(w.category)) return false;
+  const arr = isHandgun ? character.holsters : character.weaponSlots;
+  const idx = arr.indexOf(null);
+  if (idx < 0) return false;
+  arr[idx] = w.id;
+  return true;
+}
+function makeWeaponLoose(id) {
+  if (!Array.isArray(character.customItems)) character.customItems = [];
+  if (character.customItems.some(ci => ci.fromWeapon === id)) return;
+  const w = character.weapons.find(x => x.id === id);
+  if (!w) return;
+  character.customItems.push({
+    id: "wpn-" + id, name: w.name || "Weapon",
+    desc: (WEAPON_TYPE_LABEL[w.category] || w.category) + " — loose in pack (no free slot)",
+    qty: 1, fromWeapon: id,
+  });
+}
+function removeLooseWeapon(id) {
+  character.customItems = character.customItems.filter(ci => ci.fromWeapon !== id);
+}
+
 function renderBackpack() {
+  syncWeaponHolsters();
   renderEquipSlots();
 
   const stack3 = !!(D && D.flags && D.flags.craftedStack3);
@@ -1986,7 +2082,16 @@ function renderBackpack() {
   // Custom items rendered in the main backpack listing alongside normal items.
   if (!Array.isArray(character.customItems)) character.customItems = [];
   if (character.customItems.length) {
-    const customCards = character.customItems.map(it => `
+    const customCards = character.customItems.map(it => it.fromWeapon ? `
+      <div class="inv-item has-qty loose-weapon" data-item-info="${esc(it.id)}">
+        <span class="inv-icon">${icon("invcustom")}</span>
+        <div class="inv-name">${esc(it.name)}</div>
+        <div class="inv-qty">1</div>
+        <div class="inv-controls">
+          <button class="inv-btn" data-custom-del="${esc(it.id)}" title="Discard weapon">✕</button>
+        </div>
+        ${it.desc ? `<div class="inv-recipe">${esc(it.desc)}</div>` : ""}
+      </div>` : `
       <div class="inv-item has-qty" data-item-info="${esc(it.id)}">
         <span class="inv-icon">${icon("invcustom")}</span>
         <div class="inv-name">${esc(it.name)}</div>
@@ -2013,13 +2118,14 @@ function renderBackpack() {
 
 /* Max stack size per item: materials 5, ammo 10, crafted 2 (3 with Efficient Workflow). */
 function stackMax(it, stack3) {
+  if (it.fromWeapon) return 1; // a loose weapon is a single item, never a stack
   if (it.craft || it.id === "medkit") return stack3 ? 3 : 2;
   if (/Ammo|arrows/i.test(it.id)) return 10;
   return 5;
 }
 
 function groupIcon(name) {
-  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : name.includes("Custom") ? "invcustom" : "inv-medkit");
+  return icon(name.includes("Crafting") ? "inv-scrap" : name.includes("Ammuni") ? "inv-handgunAmmo" : name.includes("Custom") ? "invcustom" : "invcustom");
 }
 
 /* ---- Crafting ---- */
@@ -2372,6 +2478,31 @@ document.getElementById("custom-roll-input").addEventListener("keydown", e => {
   if (e.key === "Enter") doCustomRoll();
 });
 
+/* Dice preset buttons */
+(function buildDicePresets() {
+  const presets = [
+    { die: "d4", sides: 4, svg: `<polygon points="14,2 26,26 2,26" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="14" y="21" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">4</text>` },
+    { die: "d6", sides: 6, svg: `<rect x="3" y="3" width="22" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="14" y="19" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">6</text>` },
+    { die: "d8", sides: 8, svg: `<polygon points="14,1 27,8 27,20 14,27 1,20 1,8" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="14" y="19" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">8</text>` },
+    { die: "d10", sides: 10, svg: `<polygon points="14,1 25,6 27,18 14,27 1,18 3,6" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="14" y="19" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">10</text>` },
+    { die: "d12", sides: 12, svg: `<polygon points="14,1 24,4 27,14 22,24 6,24 1,14 4,4" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="14" y="19" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">12</text>` },
+    { die: "d20", sides: 20, svg: `<polygon points="14,1 26,6 26,22 14,27 2,22 2,6" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="6" x2="26" y2="6" stroke="currentColor" stroke-width="0.8"/><line x1="2" y1="22" x2="26" y2="22" stroke="currentColor" stroke-width="0.8"/><line x1="14" y1="1" x2="14" y2="27" stroke="currentColor" stroke-width="0.5" opacity="0.4"/><text x="14" y="19" text-anchor="middle" font-size="7" font-weight="700" fill="currentColor">20</text>` },
+    { die: "d100", sides: 100, svg: `<circle cx="14" cy="14" r="12" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="14" cy="14" r="6" fill="none" stroke="currentColor" stroke-width="0.8" opacity="0.5"/><text x="14" y="17.5" text-anchor="middle" font-size="6" font-weight="700" fill="currentColor">%</text>` }
+  ];
+  const container = document.getElementById("dice-presets");
+  presets.forEach(p => {
+    const btn = document.createElement("button");
+    btn.className = "dice-preset-btn";
+    btn.innerHTML = `<svg viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">${p.svg}</svg><span>${p.die}</span>`;
+    btn.addEventListener("click", () => {
+      const parts = parseFormula(`1${p.die}`);
+      const { total, detail } = rollFormula(parts);
+      addRollLog(`${p.die}`, detail, total);
+    });
+    container.appendChild(btn);
+  });
+})();
+
 /* Dice notation help modal */
 document.getElementById("dice-help-btn")?.addEventListener("click", () => {
   showModal(`
@@ -2670,7 +2801,13 @@ document.getElementById("equip-slots").addEventListener("change", e => {
   if (!sel) return;
   const [group, idxStr] = sel.dataset.equipSlot.split(":");
   const arr = group === "holster" ? character.holsters : character.weaponSlots;
-  arr[Number(idxStr)] = sel.value || null;
+  const idx = Number(idxStr);
+  const oldId = arr[idx];
+  const newId = sel.value || null;
+  arr[idx] = newId;
+  // Newly seated weapon leaves the loose pile; a displaced weapon drops into it.
+  if (newId) removeLooseWeapon(newId);
+  if (oldId && oldId !== newId && !weaponSeated(oldId)) makeWeaponLoose(oldId);
   save(); renderAll();
 });
 
@@ -2741,9 +2878,10 @@ document.getElementById("crafting").addEventListener("click", e => {
     const improv = character.weapons.find(w => w.category === "improvised" && !w.upgraded);
     if (improv) {
       const base = GAME_DATA.weaponTemplates["Upgraded Improvised"];
-      improv.name = base.name;
+      improv.name = (quality ? qualityLabel(quality) + " " : "") + base.name;
       improv.damage = base.damage;
       improv.upgraded = true;
+      improv.quality = quality || "";
       improv.brutal = true;
       improv.notes = (improv.notes || "") ? improv.notes + " [Upgraded]" : "Upgraded";
     }
@@ -2812,7 +2950,11 @@ document.getElementById("backpack").addEventListener("click", e => {
   if (delBtn) {
     const id = delBtn.dataset.customDel;
     const it = character.customItems.find(i => i.id === id);
-    showConfirmModal(`Remove "${it ? it.name : "this item"}" from your backpack?`, () => {
+    const msg = it && it.fromWeapon
+      ? `Discard "${it.name}"? This removes the weapon from your arsenal.`
+      : `Remove "${it ? it.name : "this item"}" from your backpack?`;
+    showConfirmModal(msg, () => {
+      if (it && it.fromWeapon) character.weapons = character.weapons.filter(w => w.id !== it.fromWeapon);
       character.customItems = character.customItems.filter(i => i.id !== id);
       save(); renderAll();
     });
@@ -2989,6 +3131,7 @@ function fireWeapon(weaponId, adv = 0) {
   // in the backpack.
   if (w.virtual) {
     rollD20(weaponToHitMod(w), `${w.name || "Weapon"} — Attack`, adv);
+    breakOnUse(w); // shivs break when used (resists permitting)
     return;
   }
 
@@ -3020,24 +3163,75 @@ function fireWeapon(weaponId, adv = 0) {
   }
 }
 
-/* Durability Check (improvised weapons): roll d4 vs the break threshold. */
+/* Durability Check: roll d4 vs the break threshold. On a failure the item
+   automatically breaks — a stored weapon is removed, a carried shiv loses one
+   from the bag — and the weapons box gives a quick pop. */
 function rollDurabilityCheck(weaponId) {
-  const w = character.weapons.find(x => x.id === weaponId);
+  const w = findAnyWeapon(weaponId);
   if (!w) return;
   const dur = weaponDurability(w);
   if (!dur) { toast("This weapon has no durability check."); return; }
   const roll = rollDie(dur.die);
-  const wouldBreak = roll <= dur.breakAt;
-  let msg, nat = null;
-  if (wouldBreak) {
-    msg = `d4 [${roll}] — it BREAKS.`;
-    nat = "nat1";
-  } else {
-    msg = `d4 [${roll}] — it holds.`;
+  const fails = roll <= dur.breakAt;
+  if (!fails) {
+    addRollLog(`${w.name || "Weapon"} — Durability`, `d4 [${roll}] — it holds.`, roll);
+    toast(`Holds. (d4: ${roll})`);
+    return;
   }
-  addRollLog(`${w.name || "Weapon"} — Durability`, msg, roll, nat);
-  toast(msg);
+  // A failed check. If the item still has resist charges, it shrugs it off.
+  if (dur.resistLeft > 0) {
+    setDurabilityResistUsed(w, durabilityResistUsed(w) + 1);
+    addRollLog(`${w.name || "Weapon"} — Durability`, `d4 [${roll}] — would break, but its quality holds (resists ×${dur.resistLeft - 1} left).`, roll);
+    toast(`${w.name || "Weapon"} resisted! (${dur.resistLeft - 1} left)`);
+    save(); renderAll();
+    pulseWeaponsBox();
+    return;
+  }
+  breakWeapon(w);
+  addRollLog(`${w.name || "Weapon"} — Durability`, `d4 [${roll}] — it BREAKS.`, roll, "nat1");
+  toast(`${w.name || "Weapon"} broke! (d4: ${roll})`);
   save(); renderAll();
+  pulseWeaponsBox();
+}
+
+/* Shivs break automatically on use — no roll. A resist charge (Hardened ×1,
+   Masterwork ×2) is spent first; once they're gone the next use snaps it. */
+function breakOnUse(w) {
+  const dur = weaponDurability(w);
+  if (!dur || !dur.breakOnUse) return;
+  if (dur.resistLeft > 0) {
+    setDurabilityResistUsed(w, durabilityResistUsed(w) + 1);
+    addRollLog(`${w.name || "Shiv"} — Durability`, `Used — held together (resists ×${dur.resistLeft - 1} left).`, "");
+    toast(`${w.name || "Shiv"} held (${dur.resistLeft - 1} left).`);
+  } else {
+    breakWeapon(w);
+    addRollLog(`${w.name || "Shiv"} — Durability`, `Used — it BREAKS.`, "✕");
+    toast(`${w.name || "Shiv"} broke after use!`);
+  }
+  save(); renderAll();
+  pulseWeaponsBox();
+}
+
+/* Remove a broken item: delete a stored weapon, or spend one carried shiv
+   (resetting that stack's resist charges). */
+function breakWeapon(w) {
+  if (w.virtual && w.consumes) {
+    const key = qualityInvKey(w.consumes, w.quality);
+    character.inventory[key] = Math.max(0, (character.inventory[key] || 0) - 1);
+    if (character.shivResist) character.shivResist[key] = 0;
+  } else {
+    const i = character.weapons.findIndex(x => x.id === w.id);
+    if (i >= 0) character.weapons.splice(i, 1);
+  }
+}
+
+/* Quick pop/pulse on the weapons box when something breaks. */
+function pulseWeaponsBox() {
+  const box = document.getElementById("weapons-grid");
+  if (!box) return;
+  box.classList.remove("break-pulse");
+  void box.offsetWidth; // reflow so the animation restarts
+  box.classList.add("break-pulse");
 }
 
 /* Recover Arrow (bows): bonus action, d4 — 3–4 recovers the arrow. */
