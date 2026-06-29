@@ -2483,31 +2483,6 @@ document.getElementById("custom-roll-input").addEventListener("keydown", e => {
   if (e.key === "Enter") doCustomRoll();
 });
 
-/* Dice preset buttons */
-(function buildDicePresets() {
-  const presets = [
-    { die: "d4", sides: 4, svg: `<polygon points="14,2 26,26 2,26" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="14" y="21" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">4</text>` },
-    { die: "d6", sides: 6, svg: `<rect x="3" y="3" width="22" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="14" y="19" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">6</text>` },
-    { die: "d8", sides: 8, svg: `<polygon points="14,1 27,8 27,20 14,27 1,20 1,8" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="14" y="19" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">8</text>` },
-    { die: "d10", sides: 10, svg: `<polygon points="14,1 25,6 27,18 14,27 1,18 3,6" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="14" y="19" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">10</text>` },
-    { die: "d12", sides: 12, svg: `<polygon points="14,1 24,4 27,14 22,24 6,24 1,14 4,4" fill="none" stroke="currentColor" stroke-width="1.5"/><text x="14" y="19" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">12</text>` },
-    { die: "d20", sides: 20, svg: `<polygon points="14,1 26,6 26,22 14,27 2,22 2,6" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="6" x2="26" y2="6" stroke="currentColor" stroke-width="0.8"/><line x1="2" y1="22" x2="26" y2="22" stroke="currentColor" stroke-width="0.8"/><line x1="14" y1="1" x2="14" y2="27" stroke="currentColor" stroke-width="0.5" opacity="0.4"/><text x="14" y="19" text-anchor="middle" font-size="7" font-weight="700" fill="currentColor">20</text>` },
-    { die: "d100", sides: 100, svg: `<circle cx="14" cy="14" r="12" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="14" cy="14" r="6" fill="none" stroke="currentColor" stroke-width="0.8" opacity="0.5"/><text x="14" y="17.5" text-anchor="middle" font-size="6" font-weight="700" fill="currentColor">%</text>` }
-  ];
-  const container = document.getElementById("dice-presets");
-  presets.forEach(p => {
-    const btn = document.createElement("button");
-    btn.className = "dice-preset-btn";
-    btn.innerHTML = `<svg viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">${p.svg}</svg><span>${p.die}</span>`;
-    btn.addEventListener("click", () => {
-      const parts = parseFormula(`1${p.die}`);
-      const { total, detail } = rollFormula(parts);
-      addRollLog(`${p.die}`, detail, total);
-    });
-    container.appendChild(btn);
-  });
-})();
-
 /* Dice notation help modal */
 document.getElementById("dice-help-btn")?.addEventListener("click", () => {
   showModal(`
